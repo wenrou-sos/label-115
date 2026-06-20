@@ -17,12 +17,12 @@ const categoryColors: Record<string, string> = {
 
 const allCategories = computed(() => {
   const cats = new Set<string>()
-  store.festivals.forEach(f => f.data.forEach(d => cats.add(d.category)))
+  store.filteredFestivals.forEach(f => f.data.forEach(d => cats.add(d.category)))
   return Array.from(cats)
 })
 
 const chartOption = computed<EChartsOption>(() => {
-  const festivals = store.festivals.map(f => f.festival)
+  const festivals = store.filteredFestivals.map(f => f.festival)
   const series = allCategories.value.map(category => ({
     name: category,
     type: 'bar' as const,
@@ -37,7 +37,7 @@ const chartOption = computed<EChartsOption>(() => {
         shadowColor: categoryColors[category] || CHART_COLORS.wine
       }
     },
-    data: store.festivals.map(f => {
+    data: store.filteredFestivals.map(f => {
       const item = f.data.find(d => d.category === category)
       return item ? item.salesMultiple : null
     })
@@ -49,7 +49,7 @@ const chartOption = computed<EChartsOption>(() => {
       formatter: (params: any) => {
         const arr = Array.isArray(params) ? params : [params]
         const festival = arr[0].axisValue
-        const festivalData = store.festivals.find(f => f.festival === festival)
+        const festivalData = store.filteredFestivals.find(f => f.festival === festival)
         let html = `<div style="font-weight:600;margin-bottom:8px;color:#D4AF37">${festival}</div>`
         arr.forEach((p: any) => {
           if (p.value != null) {

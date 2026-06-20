@@ -18,25 +18,40 @@ const categoryList = [
 ]
 
 const barOption = computed<EChartsOption>(() => {
-  const xAxisData = store.ageGroups.map(g => g.ageGroup)
-  const series = categoryList.map(cat => ({
-    name: cat.name,
-    type: 'bar' as const,
-    stack: 'total',
-    barMaxWidth: 48,
-    itemStyle: {
-      color: cat.color,
-      borderRadius: [0, 0, 0, 0] as [number, number, number, number]
-    },
-    emphasis: {
+  const xAxisData = store.filteredAgeGroups.map(g => g.ageGroup)
+  const activeKeys = new Set<string>()
+  if (store.filters.selectedCategories.length > 0) {
+    const mapCategory: Record<string, string> = {
+      '白酒': 'baijiu', '啤酒': 'beer', '精酿啤酒': 'craftBeer',
+      '红酒': 'wine', '果酒清酒': 'sparkling', '黄酒': 'huangjiu', '威士忌': 'whiskey'
+    }
+    store.filters.selectedCategories.forEach(c => {
+      const k = mapCategory[c]
+      if (k) activeKeys.add(k)
+    })
+  }
+  const series = categoryList
+    .filter(cat => activeKeys.size === 0 || activeKeys.has(cat.key))
+    .map(cat => ({
+      name: cat.name,
+      type: 'bar' as const,
+      stack: 'total',
+      barMaxWidth: 48,
       itemStyle: {
-        shadowBlur: 10,
-        shadowColor: cat.color + '80'
-      }
-    },
-    data: store.ageGroups.map(g => (g as any)[cat.key])
-  }))
-  series[series.length - 1].itemStyle.borderRadius = [4, 4, 0, 0]
+        color: cat.color,
+        borderRadius: [0, 0, 0, 0] as [number, number, number, number]
+      },
+      emphasis: {
+        itemStyle: {
+          shadowBlur: 10,
+          shadowColor: cat.color + '80'
+        }
+      },
+      data: store.filteredAgeGroups.map(g => (g as any)[cat.key] ?? 0)
+    }))
+  if (series.length > 0) {
+    series[series.length - 1].itemStyle.borderRadius = [4, 4, 0, 0]
+  }
   return {
     tooltip: {
       ...baseTooltip,

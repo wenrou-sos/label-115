@@ -9,7 +9,8 @@ import {
   Users,
   PartyPopper,
   Globe2,
-  Wallet
+  Wallet,
+  Info
 } from 'lucide-vue-next'
 import { useDashboardStore } from '@/stores/dashboard'
 import DashboardHeader from '@/components/layout/DashboardHeader.vue'
@@ -23,7 +24,7 @@ import FestivalModule from '@/components/modules/FestivalModule.vue'
 import ImportModule from '@/components/modules/ImportModule.vue'
 
 const store = useDashboardStore()
-const { loading, overview, error } = storeToRefs(store)
+const { loading, overview, error, showPriceModule } = storeToRefs(store)
 const loadingBar = useLoadingBar()
 
 onMounted(async () => {
@@ -99,7 +100,16 @@ const statCards = computed(() => [
           </div>
 
           <div class="grid grid-cols-1 xl:grid-cols-2 gap-5 md:gap-6">
-            <PriceModule />
+            <PriceModule v-if="showPriceModule" />
+            <div v-else class="card-glass rounded-2xl p-6 flex flex-col items-center justify-center min-h-[420px] text-center">
+              <div class="w-16 h-16 rounded-full bg-ink-800/60 flex items-center justify-center mb-4">
+                <Info class="w-8 h-8 text-champagne-500" />
+              </div>
+              <h3 class="text-lg font-semibold text-ink-200 mb-2 font-serif-cn">白酒价格带分析</h3>
+              <p class="text-sm text-ink-400 max-w-xs">
+                请在<span class="text-champagne-400 font-medium">品类筛选</span>中选择「白酒」以查看价格带分布数据
+              </p>
+            </div>
             <AgeModule />
           </div>
 

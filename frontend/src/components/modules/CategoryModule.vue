@@ -20,9 +20,11 @@ use([PieChart, LineChart, TitleComponent, TooltipComponent, LegendComponent, Gri
 const store = useDashboardStore()
 
 const pieOption = computed<EChartsOption>(() => {
-  const data = store.categories.map(c => ({
+  const raw = store.filteredCategories
+  const total = raw.reduce((s, c) => s + c.share, 0) || 1
+  const data = raw.map(c => ({
     name: c.name,
-    value: c.share
+    value: Number(((c.share / total) * 100).toFixed(1))
   }))
 
   return {
@@ -79,8 +81,8 @@ const pieOption = computed<EChartsOption>(() => {
 })
 
 const lineOption = computed<EChartsOption>(() => {
-  const years = store.years
-  const series = store.categories.map(c => ({
+  const years = store.filteredYears.length > 0 ? store.filteredYears : store.years
+  const series = store.filteredCategories.map(c => ({
     name: c.name,
     type: 'line' as const,
     smooth: true,

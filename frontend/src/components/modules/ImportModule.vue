@@ -16,8 +16,9 @@ const lineColors: Record<string, string> = {
 }
 
 const chartOption = computed<EChartsOption>(() => {
-  const years = store.importCompare.map(d => d.year)
-  const tariffData = store.importCompare.map(d => d.tariffRate)
+  const data = store.filteredImportCompare.length > 0 ? store.filteredImportCompare : store.importCompare
+  const years = data.map(d => d.year)
+  const tariffData = data.map(d => d.tariffRate)
   const tariffMarkPoints = tariffData
     .map((v, i) => ({ v, i }))
     .filter((item, idx, arr) => idx === 0 || item.v !== arr[idx - 1].v)
@@ -117,7 +118,7 @@ const chartOption = computed<EChartsOption>(() => {
         symbolSize: 7,
         lineStyle: { width: 2.5, color: lineColors['进口葡萄酒'] },
         itemStyle: { color: lineColors['进口葡萄酒'] },
-        data: store.importCompare.map(d => d.importWineShare)
+        data: data.map(d => d.importWineShare)
       },
       {
         name: '国产葡萄酒',
@@ -136,7 +137,7 @@ const chartOption = computed<EChartsOption>(() => {
             ]
           }
         },
-        data: store.importCompare.map(d => d.domesticWineShare)
+        data: data.map(d => d.domesticWineShare)
       },
       {
         name: '进口威士忌',
@@ -146,7 +147,7 @@ const chartOption = computed<EChartsOption>(() => {
         symbolSize: 7,
         lineStyle: { width: 2.5, color: lineColors['进口威士忌'], type: 'dashed' },
         itemStyle: { color: lineColors['进口威士忌'] },
-        data: store.importCompare.map(d => d.importWhiskeyShare)
+        data: data.map(d => d.importWhiskeyShare)
       },
       {
         name: '国产威士忌',
@@ -156,7 +157,7 @@ const chartOption = computed<EChartsOption>(() => {
         symbolSize: 7,
         lineStyle: { width: 2.5, color: lineColors['国产威士忌'], type: 'dashed' },
         itemStyle: { color: lineColors['国产威士忌'] },
-        data: store.importCompare.map(d => d.domesticWhiskeyShare)
+        data: data.map(d => d.domesticWhiskeyShare)
       },
       {
         name: '关税率',
@@ -175,8 +176,9 @@ const chartOption = computed<EChartsOption>(() => {
 })
 
 const insights = computed(() => {
-  const first = store.importCompare[0]
-  const last = store.importCompare[store.importCompare.length - 1]
+  const src = store.filteredImportCompare.length > 0 ? store.filteredImportCompare : store.importCompare
+  const first = src[0]
+  const last = src[src.length - 1]
   if (!first || !last) return []
   return [
     { label: '进口葡萄酒份额下降', value: `-${(first.importWineShare - last.importWineShare).toFixed(1)}%` },

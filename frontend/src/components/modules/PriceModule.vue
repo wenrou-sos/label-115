@@ -10,7 +10,7 @@ const store = useDashboardStore()
 const priceColors = ['#8B0000', '#A52A2A', '#CD5C5C', '#D4AF37', '#FFD700']
 
 const pieOption = computed<EChartsOption>(() => {
-  const data = store.priceRanges.map((item, idx) => ({
+  const data = store.filteredPriceRanges.map((item, idx) => ({
     name: item.range,
     value: item.share,
     itemStyle: { color: priceColors[idx % priceColors.length] }
@@ -56,8 +56,8 @@ const pieOption = computed<EChartsOption>(() => {
 })
 
 const areaOption = computed<EChartsOption>(() => {
-  const years = store.years.length > 0 ? store.years : ['2021', '2022', '2023', '2024', '2025']
-  const series = store.priceRanges.map((item, idx) => ({
+  const years = store.filteredYears.length > 0 ? store.filteredYears : store.years
+  const series = store.filteredPriceRanges.map((item, idx) => ({
     name: item.range,
     type: 'line' as const,
     stack: 'total',

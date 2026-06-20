@@ -21,8 +21,6 @@ use([RadarChart, TitleComponent, TooltipComponent, LegendComponent, RadarCompone
 
 const store = useDashboardStore()
 
-const REPRESENTATIVE_CITIES = ['哈尔滨', '上海', '深圳', '成都', '北京']
-
 const radarDimensions = [
   { name: '白酒', max: 100 },
   { name: '啤酒', max: 100 },
@@ -35,7 +33,7 @@ const radarDimensions = [
 const radarColors = ['#8B0000', '#D4AF37', '#CD853F', '#FF69B4', '#4A90D9']
 
 const radarOption = computed<EChartsOption>(() => {
-  const cities = store.cities.filter(c => REPRESENTATIVE_CITIES.includes(c.city))
+  const cities = store.radarCities
 
   return {
     tooltip: {
@@ -91,7 +89,7 @@ const radarOption = computed<EChartsOption>(() => {
 })
 
 const rankingData = computed(() => {
-  return [...store.cities]
+  return [...store.filteredCities]
     .sort((a, b) => b.craftIndex - a.craftIndex)
     .map((city, index) => ({
       key: city.city,
