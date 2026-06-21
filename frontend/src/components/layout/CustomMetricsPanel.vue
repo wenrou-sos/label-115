@@ -29,7 +29,7 @@ const emit = defineEmits<{
 }>()
 
 const store = useDashboardStore()
-const { customMetrics, filteredCategories, filteredCities, filteredAgeGroups, filteredPriceRanges, filteredFestivals } = storeToRefs(store)
+const { customMetrics } = storeToRefs(store)
 const message = useMessage()
 
 const selectedIds = ref<string[]>([])
@@ -69,77 +69,12 @@ const groupedMetrics = computed(() => {
     festival: []
   }
   AVAILABLE_METRICS.forEach(m => {
-    if (isMetricAvailable(m.id)) {
+    if (store.isMetricAvailable(m.id)) {
       groups[m.category].push(m)
     }
   })
   return groups
 })
-
-function isMetricAvailable(metricId: string): boolean {
-  const parts = metricId.split('_')
-  const category = parts[0]
-
-  if (category === 'category') {
-    const catNameMap: Record<string, string> = {
-      baijiu: '白酒',
-      beer: '啤酒',
-      wine: '红酒',
-      huangjiu: '黄酒',
-      craftBeer: '精酿啤酒',
-      whiskey: '威士忌'
-    }
-    const catKey = parts[1]
-    const catName = catNameMap[catKey]
-    return filteredCategories.value.some(c => c.name === catName)
-  }
-
-  if (category === 'region') {
-    return filteredCities.value.length > 0
-  }
-
-  if (category === 'age') {
-    const ageMap: Record<string, string> = {
-      '18-25': '18-25岁',
-      '26-30': '26-30岁',
-      '31-40': '31-40岁',
-      '41-50': '41-50岁',
-      '51+': '51岁以上'
-    }
-    const ageKey = parts[1]
-    const ageName = ageMap[ageKey]
-    return filteredAgeGroups.value.some(g => g.ageGroup === ageName)
-  }
-
-  if (category === 'price') {
-    const rangeMap: Record<string, string> = {
-      low: '百元以下',
-      mid: '100-300元',
-      high: '300-800元',
-      premium: '800-2000元',
-      luxury: '2000元以上'
-    }
-    const priceKey = parts[1]
-    const rangeName = rangeMap[priceKey]
-    return filteredPriceRanges.value.some(p => p.range.includes(rangeName))
-  }
-
-  if (category === 'festival') {
-    const festivalMap: Record<string, string> = {
-      springFestival: '春节',
-      valentines: '情人节',
-      midAutumn: '中秋',
-      christmas: '圣诞节',
-      newYear: '元旦',
-      qingming: '清明'
-    }
-    const festKey = parts[1]
-    const festName = festivalMap[festKey]
-    return filteredFestivals.value.some(f => f.festival === festName)
-  }
-
-  return true
-}
 
 function getMetaById(id: string): MetricMeta | undefined {
   return AVAILABLE_METRICS.find(m => m.id === id)
@@ -253,8 +188,7 @@ function handleSave() {
 function handleReset() {
   selectedIds.value = []
   orderedMetrics.value = []
-  store.resetCustomMetrics()
-  message.success('已恢复默认设置')
+  message.success('已清空选择，点击保存后生效')
 }
 
 function handleClose() {
@@ -272,7 +206,7 @@ const flatMetricIds = computed(() => {
 })
 
 function selectAllInCategory(cat: MetricCategory) {
-  const catMetrics = groupedMetrics.value[cat].filter(m => isMetricAvailable(m.id))
+  const catMetrics = groupedMetrics.value[cat]
   const idsToAdd = catMetrics.map(m => m.id).filter(id => !selectedIds.value.includes(id))
 
   idsToAdd.forEach(id => {

@@ -112,7 +112,9 @@ const defaultStatCards = computed(() => [
 ])
 
 const customStatCards = computed(() => {
-  const sorted = [...customMetrics.value.metrics].sort((a, b) => a.order - b.order)
+  const sorted = [...customMetrics.value.metrics]
+    .sort((a, b) => a.order - b.order)
+    .filter(m => store.isMetricAvailable(m.id))
   return sorted.map(m => {
     const meta = getMetricMeta(m.id)
     const value = store.getMetricValue(m.id)
