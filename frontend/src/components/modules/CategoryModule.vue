@@ -534,7 +534,6 @@ const areaOption = computed<EChartsOption>(() => {
       name: c.name,
       type: 'line' as const,
       smooth: true,
-      stack: 'total',
       symbol: 'circle',
       symbolSize: 6,
       lineStyle: { width: 2, color: c.color },
@@ -680,7 +679,6 @@ const highlightMetrics = computed(() => [
           class="w-full h-full"
           :option="leftOption"
           autoresize
-          :key="'left-' + currentView"
           @click="leftClick"
         />
       </div>
@@ -689,7 +687,6 @@ const highlightMetrics = computed(() => [
           class="w-full h-full"
           :option="rightOption"
           autoresize
-          :key="'right-' + currentView"
           @click="rightClick"
         />
       </div>

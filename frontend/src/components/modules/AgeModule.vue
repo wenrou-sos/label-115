@@ -190,11 +190,12 @@ const barOption = computed<EChartsOption>(() => {
     return {
       name: cat.name,
       type: 'bar' as const,
-      stack: 'total',
-      barMaxWidth: 48,
+      barGap: '10%',
+      barCategoryGap: '30%',
+      barMaxWidth: 36,
       itemStyle: {
         color: cat.color,
-        borderRadius: [0, 0, 0, 0] as [number, number, number, number]
+        borderRadius: [4, 4, 0, 0] as [number, number, number, number]
       },
       emphasis: {
         itemStyle: {
@@ -213,24 +214,24 @@ const barOption = computed<EChartsOption>(() => {
       } : undefined
     }
   })
-  if (series.length > 0) {
-    series[series.length - 1].itemStyle.borderRadius = [4, 4, 0, 0]
-  }
   return {
     tooltip: {
       ...baseTooltip,
       formatter: (params: any) => {
-        let html = `${params[0].axisValue}<br/>`
-        let total = 0
-        params.forEach((p: any) => { total += p.value })
-        params.forEach((p: any) => {
-          const pct = total > 0 ? ((p.value / total) * 100).toFixed(1) : '0.0'
-          const ann = annotations.getAnnotation('age', p.seriesName, '年龄段占比', params[0].axisValue)
-          html += `<span style="display:inline-block;margin-right:5px;border-radius:50%;width:8px;height:8px;background:${p.color}"></span>${p.seriesName}: ${p.value}% (${pct}%)<br/>`
-          if (ann) {
-            html += `<div style="margin:2px 0 2px 14px;padding:3px 6px;background:${ann.color}22;border-left:2px solid ${ann.color};border-radius:3px;font-size:11px;color:#e5e5ea">
-              📝 ${ann.content}
+        const arr = Array.isArray(params) ? params : [params]
+        let html = `<div style="font-weight:600;margin-bottom:6px;color:#D4AF37">${arr[0]?.axisValue || ''}</div>`
+        arr.forEach((p: any) => {
+          if (p.value != null) {
+            const ann = annotations.getAnnotation('age', p.seriesName, '年龄段占比', arr[0]?.axisValue)
+            html += `<div style="display:flex;align-items:center;gap:6px;margin:3px 0">
+              <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${p.color}"></span>
+              <span>${p.seriesName}：<b>${p.value}%</b></span>
             </div>`
+            if (ann) {
+              html += `<div style="margin:2px 0 2px 14px;padding:3px 6px;background:${ann.color}22;border-left:2px solid ${ann.color};border-radius:3px;font-size:11px;color:#e5e5ea">
+                📝 ${ann.content}
+              </div>`
+            }
           }
         })
         html += `<div style="margin-top:6px;font-size:11px;color:#888;border-top:1px solid #333;padding-top:4px">💡 点击柱子可添加标注</div>`
@@ -246,7 +247,6 @@ const barOption = computed<EChartsOption>(() => {
     },
     yAxis: {
       type: 'value',
-      max: 100,
       ...darkAxisStyle,
       axisLabel: { ...darkAxisStyle.axisLabel, formatter: '{value}%' }
     },
@@ -523,7 +523,6 @@ const highlightMetrics = [
       <VChart
         :option="currentOption"
         autoresize
-        :key="'age-' + currentView"
         @click="currentClick"
       />
     </div>

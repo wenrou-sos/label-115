@@ -391,7 +391,6 @@ const areaOption = computed<EChartsOption>(() => {
     return {
       name: category,
       type: 'line' as const,
-      stack: 'total',
       smooth: true,
       symbol: 'circle',
       symbolSize: 6,
@@ -557,7 +556,6 @@ const highlightTags = computed(() => [
         :option="currentOption"
         autoresize
         class="w-full h-full"
-        :key="'festival-' + currentView"
         @click="currentClick"
       />
     </div>
