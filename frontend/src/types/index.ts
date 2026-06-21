@@ -101,3 +101,28 @@ export interface DashboardFilters {
   selectedCategories: string[]
   selectedRegion: string
 }
+
+export type AnomalySeverity = 'warning' | 'critical'
+
+export interface AnomalyPoint {
+  id: string
+  module: string
+  moduleLabel: string
+  metric: string
+  entity: string
+  index: number
+  timePoint: string
+  previous: number
+  current: number
+  changePct: number
+  threshold: number
+  severity: AnomalySeverity
+  message: string
+}
+
+export interface AnomalySettings {
+  enabled: boolean
+  thresholdPct: number
+  highlightMarks: boolean
+}
+

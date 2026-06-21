@@ -57,25 +57,62 @@ const pieOption = computed<EChartsOption>(() => {
 
 const areaOption = computed<EChartsOption>(() => {
   const years = store.filteredYears.length > 0 ? store.filteredYears : store.years
-  const series = store.filteredPriceRanges.map((item, idx) => ({
-    name: item.range,
-    type: 'line' as const,
-    stack: 'total',
-    smooth: true,
-    areaStyle: {
-      color: {
-        type: 'linear' as const,
-        x: 0, y: 0, x2: 0, y2: 1,
-        colorStops: [
-          { offset: 0, color: priceColors[idx % priceColors.length] + 'CC' },
-          { offset: 1, color: priceColors[idx % priceColors.length] + '33' }
-        ]
+  const highlightMarks = store.anomalySettings.highlightMarks
+  const series = store.filteredPriceRanges.map((item, idx) => {
+    const anomalies = highlightMarks ? store.getPriceAnomaliesByRange(item.range) : []
+    const markPointData: any[] = []
+    anomalies.forEach(a => {
+      if (years.indexOf(a.timePoint) >= 0) {
+        markPointData.push({
+          name: a.message,
+          coord: [a.timePoint, a.current],
+          value: a.changePct > 0 ? `+${a.changePct.toFixed(0)}%` : `${a.changePct.toFixed(0)}%`,
+          symbol: 'circle',
+          symbolSize: a.severity === 'critical' ? 20 : 14,
+          itemStyle: {
+            color: a.severity === 'critical' ? '#ef4444' : '#f59e0b',
+            borderColor: '#1A1A2E',
+            borderWidth: 2,
+            shadowBlur: a.severity === 'critical' ? 12 : 6,
+            shadowColor: a.severity === 'critical' ? 'rgba(239,68,68,0.8)' : 'rgba(245,158,11,0.7)'
+          },
+          label: {
+            show: true,
+            position: 'top',
+            color: a.severity === 'critical' ? '#fca5a5' : '#fcd34d',
+            fontSize: 9,
+            fontWeight: 700,
+            formatter: a.changePct > 0 ? `+${a.changePct.toFixed(0)}%!` : `${a.changePct.toFixed(0)}%!`
+          }
+        })
       }
-    },
-    lineStyle: { color: priceColors[idx % priceColors.length], width: 2 },
-    itemStyle: { color: priceColors[idx % priceColors.length] },
-    data: item.trend.length > 0 ? item.trend : []
-  }))
+    })
+    return {
+      name: item.range,
+      type: 'line' as const,
+      stack: 'total',
+      smooth: true,
+      areaStyle: {
+        color: {
+          type: 'linear' as const,
+          x: 0, y: 0, x2: 0, y2: 1,
+          colorStops: [
+            { offset: 0, color: priceColors[idx % priceColors.length] + 'CC' },
+            { offset: 1, color: priceColors[idx % priceColors.length] + '33' }
+          ]
+        }
+      },
+      lineStyle: { color: priceColors[idx % priceColors.length], width: 2 },
+      itemStyle: { color: priceColors[idx % priceColors.length] },
+      data: item.trend.length > 0 ? item.trend : [],
+      markPoint: markPointData.length > 0 ? {
+        symbol: 'circle',
+        symbolSize: 12,
+        label: { show: true, fontSize: 9, fontWeight: 700 },
+        data: markPointData
+      } : undefined
+    }
+  })
   return {
     tooltip: {
       ...baseTooltip,

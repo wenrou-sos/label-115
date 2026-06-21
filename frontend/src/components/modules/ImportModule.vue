@@ -15,6 +15,56 @@ const lineColors: Record<string, string> = {
   '关税率': '#D4AF37'
 }
 
+const seriesToMetricMap: Record<string, string> = {
+  '进口葡萄酒': '进口红酒份额',
+  '国产葡萄酒': '国产红酒份额',
+  '进口威士忌': '进口威士忌份额',
+  '国产威士忌': '国产威士忌份额',
+  '关税率': '关税率'
+}
+
+function buildAnomalyMarkPoints(seriesName: string, years: string[], getY: (year: string) => number | undefined): any | undefined {
+  if (!store.anomalySettings.highlightMarks) return undefined
+  const metric = seriesToMetricMap[seriesName]
+  if (!metric) return undefined
+  const anomalies = store.getImportAnomaliesByMetric(metric)
+  const result: any[] = []
+  anomalies.forEach(a => {
+    if (years.indexOf(a.timePoint) >= 0) {
+      const yVal = getY(a.timePoint)
+      if (yVal === undefined) return
+      result.push({
+        name: a.message,
+        coord: [a.timePoint, yVal],
+        value: a.changePct > 0 ? `+${a.changePct.toFixed(0)}%` : `${a.changePct.toFixed(0)}%`,
+        symbol: 'circle',
+        symbolSize: a.severity === 'critical' ? 22 : 16,
+        itemStyle: {
+          color: a.severity === 'critical' ? '#ef4444' : '#f59e0b',
+          borderColor: '#1A1A2E',
+          borderWidth: 2,
+          shadowBlur: a.severity === 'critical' ? 14 : 7,
+          shadowColor: a.severity === 'critical' ? 'rgba(239,68,68,0.8)' : 'rgba(245,158,11,0.7)'
+        },
+        label: {
+          show: true,
+          position: 'top',
+          color: a.severity === 'critical' ? '#fca5a5' : '#fcd34d',
+          fontSize: 9,
+          fontWeight: 700,
+          formatter: a.changePct > 0 ? `+${a.changePct.toFixed(0)}%!` : `${a.changePct.toFixed(0)}%!`
+        }
+      })
+    }
+  })
+  return result.length > 0 ? {
+    symbol: 'circle',
+    symbolSize: 12,
+    label: { show: true, fontSize: 9, fontWeight: 700 },
+    data: result
+  } : undefined
+}
+
 const chartOption = computed<EChartsOption>(() => {
   const data = store.filteredImportCompare.length > 0 ? store.filteredImportCompare : store.importCompare
   const years = data.map(d => d.year)
@@ -37,6 +87,12 @@ const chartOption = computed<EChartsOption>(() => {
         color: lineColors['关税率']
       }
     }))
+
+  const importWineByYear = (y: string) => data.find(d => d.year === y)?.importWineShare
+  const domesticWineByYear = (y: string) => data.find(d => d.year === y)?.domesticWineShare
+  const importWhiskeyByYear = (y: string) => data.find(d => d.year === y)?.importWhiskeyShare
+  const domesticWhiskeyByYear = (y: string) => data.find(d => d.year === y)?.domesticWhiskeyShare
+  const tariffByYear = (y: string) => data.find(d => d.year === y)?.tariffRate
 
   return {
     tooltip: {
@@ -118,7 +174,8 @@ const chartOption = computed<EChartsOption>(() => {
         symbolSize: 7,
         lineStyle: { width: 2.5, color: lineColors['进口葡萄酒'] },
         itemStyle: { color: lineColors['进口葡萄酒'] },
-        data: data.map(d => d.importWineShare)
+        data: data.map(d => d.importWineShare),
+        markPoint: buildAnomalyMarkPoints('进口葡萄酒', years, importWineByYear)
       },
       {
         name: '国产葡萄酒',
@@ -137,7 +194,8 @@ const chartOption = computed<EChartsOption>(() => {
             ]
           }
         },
-        data: data.map(d => d.domesticWineShare)
+        data: data.map(d => d.domesticWineShare),
+        markPoint: buildAnomalyMarkPoints('国产葡萄酒', years, domesticWineByYear)
       },
       {
         name: '进口威士忌',
@@ -147,7 +205,8 @@ const chartOption = computed<EChartsOption>(() => {
         symbolSize: 7,
         lineStyle: { width: 2.5, color: lineColors['进口威士忌'], type: 'dashed' },
         itemStyle: { color: lineColors['进口威士忌'] },
-        data: data.map(d => d.importWhiskeyShare)
+        data: data.map(d => d.importWhiskeyShare),
+        markPoint: buildAnomalyMarkPoints('进口威士忌', years, importWhiskeyByYear)
       },
       {
         name: '国产威士忌',
@@ -157,7 +216,8 @@ const chartOption = computed<EChartsOption>(() => {
         symbolSize: 7,
         lineStyle: { width: 2.5, color: lineColors['国产威士忌'], type: 'dashed' },
         itemStyle: { color: lineColors['国产威士忌'] },
-        data: data.map(d => d.domesticWhiskeyShare)
+        data: data.map(d => d.domesticWhiskeyShare),
+        markPoint: buildAnomalyMarkPoints('国产威士忌', years, domesticWhiskeyByYear)
       },
       {
         name: '关税率',
@@ -168,7 +228,7 @@ const chartOption = computed<EChartsOption>(() => {
         symbolSize: 10,
         lineStyle: { width: 3, color: lineColors['关税率'] },
         itemStyle: { color: lineColors['关税率'], borderWidth: 2, borderColor: '#1A1A2E' },
-        markPoint: { data: tariffMarkPoints },
+        markPoint: { data: tariffMarkPoints, ...(buildAnomalyMarkPoints('关税率', years, tariffByYear) || {}) },
         data: tariffData
       }
     ]

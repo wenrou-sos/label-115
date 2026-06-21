@@ -8,7 +8,10 @@ import type {
   AgeGroupData,
   FestivalData,
   ImportCompareData,
-  DashboardFilters
+  DashboardFilters,
+  AnomalyPoint,
+  AnomalySettings,
+  AnomalySeverity
 } from '@/types'
 type MessageApi = {
   success: (msg: string) => void
@@ -20,10 +23,17 @@ import type { RouteLocationNormalizedLoaded, Router } from 'vue-router'
 import { api } from '@/api'
 
 const STORAGE_KEY = 'liquor-dashboard-filters'
+const STORAGE_ANOMALY_KEY = 'liquor-dashboard-anomaly-settings'
 export const DEFAULT_FILTERS: DashboardFilters = {
   yearRange: [2021, 2025],
   selectedCategories: [],
   selectedRegion: 'all'
+}
+
+export const DEFAULT_ANOMALY_SETTINGS: AnomalySettings = {
+  enabled: true,
+  thresholdPct: 15,
+  highlightMarks: true
 }
 
 const DEFAULT_VALID_REGIONS = ['华东', '华南', '华北', '华中', '西南', '西北', '东北', '成渝', '沿海']
@@ -155,6 +165,182 @@ export const useDashboardStore = defineStore('dashboard', () => {
   const importCompare = ref<ImportCompareData[]>([])
 
   const filters = ref<DashboardFilters>({ ...DEFAULT_FILTERS })
+  const anomalySettings = ref<AnomalySettings>({ ...DEFAULT_ANOMALY_SETTINGS })
+  const anomalies = ref<AnomalyPoint[]>([])
+
+  function loadAnomalySettings() {
+    try {
+      const saved = localStorage.getItem(STORAGE_ANOMALY_KEY)
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        anomalySettings.value = { ...DEFAULT_ANOMALY_SETTINGS, ...parsed }
+        return true
+      }
+    } catch (e) {
+      console.warn('Failed to load anomaly settings', e)
+    }
+    return false
+  }
+
+  function saveAnomalySettings() {
+    try {
+      localStorage.setItem(STORAGE_ANOMALY_KEY, JSON.stringify(anomalySettings.value))
+    } catch (e) {
+      console.warn('Failed to save anomaly settings', e)
+    }
+  }
+
+  watch(anomalySettings, () => {
+    saveAnomalySettings()
+    if (anomalySettings.value.enabled) {
+      runAnomalyDetection()
+    } else {
+      anomalies.value = []
+    }
+  }, { deep: true })
+
+  function setAnomalyThreshold(pct: number) {
+    anomalySettings.value.thresholdPct = Math.max(1, Math.min(100, pct))
+  }
+
+  function setAnomalyEnabled(enabled: boolean) {
+    anomalySettings.value.enabled = enabled
+  }
+
+  function setHighlightMarks(highlight: boolean) {
+    anomalySettings.value.highlightMarks = highlight
+  }
+
+  function makeAnomaly(
+    id: string,
+    module: string,
+    moduleLabel: string,
+    metric: string,
+    entity: string,
+    index: number,
+    timePoint: string,
+    previous: number,
+    current: number,
+    threshold: number
+  ): AnomalyPoint | null {
+    const denom = Math.abs(previous) < 1e-9 ? 1e-9 : Math.abs(previous)
+    const changePct = ((current - previous) / denom) * 100
+    if (Math.abs(changePct) < threshold) return null
+    const direction = changePct > 0 ? '上升' : '下降'
+    const severity: AnomalySeverity = Math.abs(changePct) >= threshold * 2 ? 'critical' : 'warning'
+    const message = `${entity}·${metric} 在 ${timePoint} 较上一期${direction} ${changePct.toFixed(1)}%，超过阈值 ${threshold}%`
+    return {
+      id,
+      module,
+      moduleLabel,
+      metric,
+      entity,
+      index,
+      timePoint,
+      previous,
+      current,
+      changePct,
+      threshold,
+      severity,
+      message
+    }
+  }
+
+  function detectTimeSeriesAnomalies(
+    series: number[],
+    years: string[],
+    module: string,
+    moduleLabel: string,
+    metric: string,
+    entity: string,
+    threshold: number,
+    idPrefix: string
+  ): AnomalyPoint[] {
+    const result: AnomalyPoint[] = []
+    if (!series || series.length < 2) return result
+    for (let i = 1; i < series.length; i++) {
+      const a = makeAnomaly(
+        `${idPrefix}-${i}`,
+        module,
+        moduleLabel,
+        metric,
+        entity,
+        i,
+        years[i] || `${i}`,
+        series[i - 1],
+        series[i],
+        threshold
+      )
+      if (a) result.push(a)
+    }
+    return result
+  }
+
+  function runAnomalyDetection() {
+    anomalies.value = []
+    if (!anomalySettings.value.enabled) return
+    const threshold = anomalySettings.value.thresholdPct
+    const list: AnomalyPoint[] = []
+
+    // 1. 品类增速
+    categories.value.forEach((c, ci) => {
+      list.push(
+        ...detectTimeSeriesAnomalies(
+          c.growth,
+          years.value,
+          'category',
+          '品类结构',
+          '增速',
+          c.name,
+          threshold,
+          `cat-growth-${ci}`
+        )
+      )
+    })
+
+    // 2. 价格带份额趋势
+    priceRanges.value.forEach((p, pi) => {
+      list.push(
+        ...detectTimeSeriesAnomalies(
+          p.trend,
+          years.value,
+          'price',
+          '白酒价格带',
+          '份额',
+          p.range,
+          threshold,
+          `price-trend-${pi}`
+        )
+      )
+    })
+
+    // 3. 进口/国产对比（按年的 4 个指标）
+    const importMetrics = [
+      { key: 'importWineShare', label: '进口红酒份额' },
+      { key: 'domesticWineShare', label: '国产红酒份额' },
+      { key: 'importWhiskeyShare', label: '进口威士忌份额' },
+      { key: 'domesticWhiskeyShare', label: '国产威士忌份额' },
+      { key: 'tariffRate', label: '关税率' }
+    ] as const
+    importMetrics.forEach(metric => {
+      const series = importCompare.value.map(row => (row as any)[metric.key] as number)
+      const timePoints = importCompare.value.map(row => row.year)
+      list.push(
+        ...detectTimeSeriesAnomalies(
+          series,
+          timePoints,
+          'import',
+          '进口与国产对比',
+          metric.label,
+          metric.label,
+          threshold,
+          `import-${metric.key}`
+        )
+      )
+    })
+
+    anomalies.value = list
+  }
 
   function saveFiltersToStorage() {
     try {
@@ -200,6 +386,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
   function initFilters(route: RouteLocationNormalizedLoaded) {
     isSyncing = true
     try {
+      loadAnomalySettings()
       const fromUrl = parseFilterQuery(
         route.query as Record<string, any>,
         filters.value,
@@ -222,6 +409,25 @@ export const useDashboardStore = defineStore('dashboard', () => {
 
   function getShareUrl(path: string): string {
     return buildShareUrl(filters.value, path)
+  }
+
+  const anomalyCount = computed(() => anomalies.value.length)
+  const criticalAnomalyCount = computed(() => anomalies.value.filter(a => a.severity === 'critical').length)
+
+  const categoryGrowthAnomalies = computed(() => anomalies.value.filter(a => a.module === 'category'))
+  const priceTrendAnomalies = computed(() => anomalies.value.filter(a => a.module === 'price'))
+  const importCompareAnomalies = computed(() => anomalies.value.filter(a => a.module === 'import'))
+
+  function getCategoryAnomaliesByName(name: string): AnomalyPoint[] {
+    return anomalies.value.filter(a => a.module === 'category' && a.entity === name)
+  }
+
+  function getPriceAnomaliesByRange(range: string): AnomalyPoint[] {
+    return anomalies.value.filter(a => a.module === 'price' && a.entity === range)
+  }
+
+  function getImportAnomaliesByMetric(metric: string): AnomalyPoint[] {
+    return anomalies.value.filter(a => a.module === 'import' && a.metric === metric)
   }
 
   const filteredYears = computed(() => {
@@ -357,6 +563,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
         fetchFestival(),
         fetchImportCompare()
       ])
+      runAnomalyDetection()
     } catch (e) {
       error.value = e instanceof Error ? e.message : '加载数据失败'
     } finally {
@@ -427,6 +634,13 @@ export const useDashboardStore = defineStore('dashboard', () => {
     festivals,
     importCompare,
     filters,
+    anomalySettings,
+    anomalies,
+    anomalyCount,
+    criticalAnomalyCount,
+    categoryGrowthAnomalies,
+    priceTrendAnomalies,
+    importCompareAnomalies,
     filteredYears,
     filteredCategories,
     filteredCities,
@@ -444,6 +658,13 @@ export const useDashboardStore = defineStore('dashboard', () => {
     setRouter,
     getShareUrl,
     saveFiltersToStorage,
-    loadFiltersFromStorage
+    loadFiltersFromStorage,
+    runAnomalyDetection,
+    setAnomalyThreshold,
+    setAnomalyEnabled,
+    setHighlightMarks,
+    getCategoryAnomaliesByName,
+    getPriceAnomaliesByRange,
+    getImportAnomaliesByMetric
   }
 })

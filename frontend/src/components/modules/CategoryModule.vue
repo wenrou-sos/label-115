@@ -7,7 +7,8 @@ import {
   TitleComponent,
   TooltipComponent,
   LegendComponent,
-  GridComponent
+  GridComponent,
+  MarkPointComponent
 } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import type { EChartsOption } from 'echarts'
@@ -15,7 +16,7 @@ import { TrendingUp, PieChart as PieChartIcon, Activity } from 'lucide-vue-next'
 import { useDashboardStore } from '@/stores/dashboard'
 import { baseTooltip, baseLegend, baseGrid, darkAxisStyle } from '@/utils/chartOptions'
 
-use([PieChart, LineChart, TitleComponent, TooltipComponent, LegendComponent, GridComponent, CanvasRenderer])
+use([PieChart, LineChart, TitleComponent, TooltipComponent, LegendComponent, GridComponent, CanvasRenderer, MarkPointComponent])
 
 const store = useDashboardStore()
 
@@ -82,19 +83,87 @@ const pieOption = computed<EChartsOption>(() => {
 
 const lineOption = computed<EChartsOption>(() => {
   const years = store.filteredYears.length > 0 ? store.filteredYears : store.years
-  const series = store.filteredCategories.map(c => ({
-    name: c.name,
-    type: 'line' as const,
-    smooth: true,
-    symbol: 'circle',
-    symbolSize: 6,
-    lineStyle: { width: 2 },
-    itemStyle: { color: c.color },
-    data: c.growth
-  }))
+  const yearIdxOffset = store.years.indexOf(years[0]) >= 0 ? store.years.indexOf(years[0]) : 0
+  const highlightMarks = store.anomalySettings.highlightMarks
+
+  const series = store.filteredCategories.map(c => {
+    const catAnomalies = highlightMarks ? store.getCategoryAnomaliesByName(c.name) : []
+    const markPointData: any[] = []
+    catAnomalies.forEach(a => {
+      const idx = years.indexOf(a.timePoint)
+      if (idx >= 0) {
+        markPointData.push({
+          name: `${a.message}`,
+          coord: [a.timePoint, a.current],
+          value: a.changePct > 0 ? `+${a.changePct.toFixed(0)}%` : `${a.changePct.toFixed(0)}%`,
+          symbol: 'circle',
+          symbolSize: a.severity === 'critical' ? 22 : 16,
+          itemStyle: {
+            color: a.severity === 'critical' ? '#ef4444' : '#f59e0b',
+            borderColor: '#1A1A2E',
+            borderWidth: 2,
+            shadowBlur: a.severity === 'critical' ? 12 : 6,
+            shadowColor: a.severity === 'critical' ? 'rgba(239,68,68,0.8)' : 'rgba(245,158,11,0.7)'
+          },
+          label: {
+            show: true,
+            position: 'top',
+            distance: 4,
+            color: a.severity === 'critical' ? '#fca5a5' : '#fcd34d',
+            fontSize: 10,
+            fontWeight: 700,
+            formatter: a.changePct > 0 ? `+${a.changePct.toFixed(0)}%!` : `${a.changePct.toFixed(0)}%!`
+          },
+          emphasis: {
+            itemStyle: {
+              shadowBlur: a.severity === 'critical' ? 20 : 12,
+              shadowColor: a.severity === 'critical' ? '#ef4444' : '#f59e0b'
+            }
+          }
+        })
+      }
+    })
+
+    return {
+      name: c.name,
+      type: 'line' as const,
+      smooth: true,
+      symbol: 'circle',
+      symbolSize: 6,
+      lineStyle: { width: 2 },
+      itemStyle: { color: c.color },
+      data: c.growth,
+      markPoint: markPointData.length > 0 ? {
+        symbol: 'circle',
+        symbolSize: 14,
+        label: { show: true, fontSize: 10, fontWeight: 700 },
+        data: markPointData,
+        animation: true,
+        animationDuration: 500
+      } : undefined
+    }
+  })
 
   return {
-    tooltip: baseTooltip,
+    tooltip: {
+      ...baseTooltip,
+      formatter: (params: any) => {
+        const list = Array.isArray(params) ? params : [params]
+        let html = `<div style="font-weight:bold;margin-bottom:6px;color:#D4AF37">${list[0]?.axisValue || ''}</div>`
+        list.forEach((p: any) => {
+          html += `<div style="display:flex;align-items:center;gap:6px;margin:3px 0">
+            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${p.color}"></span>
+            <span>${p.seriesName}：<b>${p.value}%</b></span>
+          </div>`
+          if (p.marker && p.data && typeof p.data === 'object' && p.data.value) {
+            html += `<div style="font-size:11px;color:${p.data.value > 0 ? '#fca5a5' : '#fcd34d'};margin-left:14px">
+              ⚠ ${p.data.value} 异常波动
+            </div>`
+          }
+        })
+        return html
+      }
+    },
     legend: { ...baseLegend, top: 0 },
     grid: baseGrid,
     xAxis: {

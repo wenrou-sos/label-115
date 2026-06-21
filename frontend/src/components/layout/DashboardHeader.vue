@@ -4,6 +4,8 @@ import { NButton, NSpace, useLoadingBar, useMessage } from 'naive-ui'
 import { useRoute } from 'vue-router'
 import { useDashboardStore, copyShareUrl } from '@/stores/dashboard'
 import { storeToRefs } from 'pinia'
+import AnomalyBadge from './AnomalyBadge.vue'
+import SettingsPanel from './SettingsPanel.vue'
 
 const store = useDashboardStore()
 const { loading, overview } = storeToRefs(store)
@@ -53,6 +55,8 @@ function handleShare() {
             <Calendar class="w-4 h-4 text-champagne-500/70" />
             <span>数据更新: 2025年Q4</span>
           </div>
+          <AnomalyBadge />
+          <SettingsPanel />
           <NButton
             size="medium"
             quaternary
