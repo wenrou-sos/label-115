@@ -43,6 +43,16 @@ function getCategoryColor(category: string): string {
   return categoryColors[category] || CHART_COLORS.wine
 }
 
+function getLatestValue(val: number | number[]): number {
+  if (Array.isArray(val)) return val.length > 0 ? val[val.length - 1] : 0
+  return val
+}
+
+function getSeriesArray(val: number | number[]): number[] {
+  if (Array.isArray(val)) return val
+  return [val]
+}
+
 const allCategories = computed(() => {
   const cats = new Set<string>()
   store.filteredFestivals.forEach(f => f.data.forEach(d => cats.add(d.category)))
@@ -83,7 +93,8 @@ function onBarClick(params: any) {
 
 function onAreaClick(params: any) {
   if (params && params.seriesName && params.name && typeof params.value === 'number' && params.value != null) {
-    openAnnotation(params.seriesName, String(params.name), params.value)
+    const seriesKey = String(params.seriesName).replace('(预测)', '')
+    openAnnotation(seriesKey, String(params.name), params.value)
   }
 }
 
@@ -93,8 +104,8 @@ function onRadarClick(params: any) {
     const category = params.name
     const f = store.filteredFestivals.find(f => f.festival === festival)
     const item = f?.data.find(d => d.category === category)
-    if (f && item && typeof item.salesMultiple === 'number') {
-      openAnnotation(category, festival, item.salesMultiple)
+    if (f && item) {
+      openAnnotation(category, festival, getLatestValue(item.salesMultiple))
     }
   }
 }
@@ -142,7 +153,7 @@ const barOption = computed<EChartsOption>(() => {
     const color = getCategoryColor(category)
     const seriesData = store.filteredFestivals.map(f => {
       const item = f.data.find(d => d.category === category)
-      const value = item ? item.salesMultiple : null
+      const value = item ? getLatestValue(item.salesMultiple) : null
       const ann = item ? annotations.getAnnotation('festival', category, '节日销售倍数', f.festival) : undefined
       return {
         value,
@@ -161,7 +172,7 @@ const barOption = computed<EChartsOption>(() => {
       if (ann && item) {
         markPointData.push({
           name: ann.content,
-          coord: [f.festival, item.salesMultiple],
+          coord: [f.festival, getLatestValue(item.salesMultiple)],
           value: '📝',
           symbol: 'pin',
           symbolSize: 36,
@@ -225,7 +236,7 @@ const barOption = computed<EChartsOption>(() => {
           }
         })
         if (festivalData) {
-          const avgHighEnd = (festivalData.data.reduce((s, d) => s + d.highEndRatio, 0) / festivalData.data.length).toFixed(1)
+          const avgHighEnd = (festivalData.data.reduce((s, d) => s + getLatestValue(d.highEndRatio), 0) / festivalData.data.length).toFixed(1)
           html += `<div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(212,175,55,0.2)">
             <span style="color:#9c9cab">平均高端酒占比：</span>
             <strong style="color:#D4AF37">${avgHighEnd}%</strong>
@@ -275,7 +286,7 @@ const radarOption = computed<EChartsOption>(() => {
       const item = f.data.find(d => d.category === c)
       return {
         name: c,
-        value: item?.salesMultiple ?? 0,
+        value: item ? getLatestValue(item.salesMultiple) : 0,
         itemStyle: annotations.getAnnotation('festival', c, '节日销售倍数', f.festival) ? {
           borderColor: getCategoryColor(c),
           borderWidth: 2,
@@ -359,21 +370,85 @@ const radarOption = computed<EChartsOption>(() => {
 })
 
 const areaOption = computed<EChartsOption>(() => {
-  const festivals = store.filteredFestivals.map(f => f.festival)
-  const series = allCategories.value.map(category => {
-    const color = getCategoryColor(category)
-    const seriesData = store.filteredFestivals.map(f => {
-      const item = f.data.find(d => d.category === category)
-      return item ? item.salesMultiple : null
+  const forecast = store.festivalForecast
+  const historicalYears = store.filteredYears.length > 0 ? store.filteredYears : store.years
+  const forecastYears = forecast?.forecastYears || []
+  const allYears = [...historicalYears, ...forecastYears]
+
+  const actualSeries: any[] = []
+  const forecastSeries: any[] = []
+  const markLines: any[] = []
+
+  if (forecast && forecastYears.length > 0) {
+    markLines.push({
+      xAxis: historicalYears[historicalYears.length - 1],
+      lineStyle: {
+        color: '#E6C35C',
+        type: 'dashed',
+        width: 1,
+        opacity: 0.6
+      },
+      label: {
+        formatter: '预测',
+        position: 'start',
+        color: '#E6C35C',
+        fontSize: 11,
+        fontWeight: 600,
+        backgroundColor: 'rgba(230, 195, 92, 0.08)',
+        padding: [2, 6],
+        borderRadius: 4
+      }
     })
-    const markPointData: any[] = []
-    store.filteredFestivals.forEach(f => {
+  }
+
+  allCategories.value.forEach(category => {
+    const color = getCategoryColor(category)
+    const catYearSums: number[] = new Array(historicalYears.length).fill(0)
+    const catYearCounts: number[] = new Array(historicalYears.length).fill(0)
+    const catFcSums: number[] = new Array(forecastYears.length).fill(0)
+    const catFcCounts: number[] = new Array(forecastYears.length).fill(0)
+
+    for (const f of store.filteredFestivals) {
       const item = f.data.find(d => d.category === category)
-      const ann = item ? annotations.getAnnotation('festival', category, '节日销售倍数', f.festival) : undefined
-      if (ann && item) {
+      if (item) {
+        const s = getSeriesArray(item.salesMultiple)
+        historicalYears.forEach((y, yi) => {
+          const yIdx = store.years.indexOf(y)
+          if (yIdx >= 0 && s[yIdx] != null && typeof s[yIdx] === 'number') {
+            catYearSums[yi] += s[yIdx]
+            catYearCounts[yi] += 1
+          }
+        })
+        if (forecast && forecast.festivals) {
+          const festFc = forecast.festivals.find(ff => ff.festival === f.festival)
+          const catFestFc = festFc?.data.find(d => d.category === category)
+          if (catFestFc && catFestFc.forecast) {
+            catFestFc.forecast.forEach((v, fi) => {
+              if (v != null && typeof v === 'number') {
+                catFcSums[fi] += v
+                catFcCounts[fi] += 1
+              }
+            })
+          }
+        }
+      }
+    }
+
+    const historical: (number | null)[] = catYearCounts.map((c, i) => c > 0 ? Number((catYearSums[i] / c).toFixed(2)) : null)
+    const fc: number[] = catFcCounts.map((c, i) => c > 0 ? Number((catFcSums[i] / c).toFixed(2)) : 0)
+
+    const paddedActual = [...historical, ...Array(forecastYears.length).fill(null)]
+    const padding = Array(historical.length - 1).fill(null)
+    const bridge = historical.length > 0 && historical[historical.length - 1] != null ? [historical[historical.length - 1]] : []
+    const paddedForecast = [...padding, ...bridge, ...fc]
+
+    const markPointData: any[] = []
+    historicalYears.forEach((y, yi) => {
+      const ann = annotations.getAnnotation('festival', category, '节日销售倍数', y)
+      if (ann && historical[yi] != null) {
         markPointData.push({
           name: ann.content,
-          coord: [f.festival, item.salesMultiple],
+          coord: [y, historical[yi]],
           value: '📝',
           symbol: 'pin',
           symbolSize: 36,
@@ -388,16 +463,14 @@ const areaOption = computed<EChartsOption>(() => {
         })
       }
     })
-    return {
+
+    actualSeries.push({
       name: category,
       type: 'line' as const,
       smooth: true,
       symbol: 'circle',
       symbolSize: 6,
-      lineStyle: {
-        width: 2,
-        color
-      },
+      lineStyle: { width: 2, color },
       itemStyle: { color },
       areaStyle: {
         color: {
@@ -410,12 +483,9 @@ const areaOption = computed<EChartsOption>(() => {
         }
       },
       emphasis: {
-        itemStyle: {
-          shadowBlur: 12,
-          shadowColor: color
-        }
+        itemStyle: { shadowBlur: 12, shadowColor: color }
       },
-      data: seriesData,
+      data: paddedActual,
       animationDuration: 800,
       animationEasing: 'cubicOut' as const,
       markPoint: markPointData.length > 0 ? {
@@ -423,7 +493,38 @@ const areaOption = computed<EChartsOption>(() => {
         symbolSize: 12,
         label: { show: true, fontSize: 10, fontWeight: 700 },
         data: markPointData
+      } : undefined,
+      markLine: markLines.length > 0 ? {
+        silent: true,
+        symbol: 'none',
+        lineStyle: { width: 0 },
+        data: markLines
       } : undefined
+    })
+
+    if (fc.length > 0 && fc.some(v => v > 0)) {
+      forecastSeries.push({
+        name: `${category}(预测)`,
+        type: 'line' as const,
+        smooth: true,
+        symbol: 'circle',
+        symbolSize: 5,
+        showSymbol: false,
+        lineStyle: {
+          type: 'dashed' as const,
+          width: 2,
+          color: '#E6C35C',
+          opacity: 0.85
+        },
+        itemStyle: { color: '#E6C35C' },
+        data: paddedForecast,
+        animationDuration: 800,
+        tooltip: {
+          valueFormatter: (v: any) => v != null ? `${v}x (预测)` : ''
+        },
+        legendHoverLink: false,
+        z: 1
+      })
     }
   })
 
@@ -432,14 +533,16 @@ const areaOption = computed<EChartsOption>(() => {
       ...baseTooltip,
       formatter: (params: any) => {
         const arr = Array.isArray(params) ? params : [params]
-        const festival = arr[0].axisValue
-        let html = `<div style="font-weight:600;margin-bottom:6px;color:#D4AF37">${festival}</div>`
+        const year = arr[0].axisValue
+        let html = `<div style="font-weight:600;margin-bottom:6px;color:#D4AF37">${year}</div>`
         arr.forEach((p: any) => {
           if (p.value != null) {
-            const ann = annotations.getAnnotation('festival', p.seriesName, '节日销售倍数', festival)
+            const isForecast = String(p.seriesName).includes('预测')
+            const seriesKey = String(p.seriesName).replace('(预测)', '')
+            const ann = annotations.getAnnotation('festival', seriesKey, '节日销售倍数', year)
             html += `<div style="display:flex;align-items:center;gap:6px;margin:3px 0">
               <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${p.color}"></span>
-              <span>${p.seriesName}：<b>${p.value}x</b></span>
+              <span>${p.seriesName}：<b>${p.value}x</b>${isForecast ? ' <span style="color:#E6C35C;font-size:11px">预测</span>' : ''}</span>
             </div>`
             if (ann) {
               html += `<div style="margin:4px 0 4px 14px;padding:3px 6px;background:${ann.color}22;border-left:2px solid ${ann.color};border-radius:3px;font-size:11px;color:#e5e5ea">
@@ -454,17 +557,18 @@ const areaOption = computed<EChartsOption>(() => {
     },
     legend: {
       ...baseLegend,
-      data: allCategories.value
+      data: [...allCategories.value, ...(forecast && forecastYears.length > 0 ? allCategories.value.map(c => `${c}(预测)`) : [])]
     },
     grid: baseGrid,
     xAxis: {
       type: 'category',
       boundaryGap: false,
-      data: festivals,
+      data: allYears,
       ...darkAxisStyle,
       axisLabel: {
         ...darkAxisStyle.axisLabel,
-        fontWeight: 500
+        fontWeight: 500,
+        formatter: (v: string) => forecastYears.includes(v) ? `${v}\n预测` : v
       }
     },
     yAxis: {
@@ -478,7 +582,7 @@ const areaOption = computed<EChartsOption>(() => {
       }
     },
     animationDuration: 800,
-    series
+    series: [...actualSeries, ...forecastSeries]
   }
 })
 

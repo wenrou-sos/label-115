@@ -287,46 +287,126 @@ def generate_dataset():
         {
             'festival': '春节',
             'data': [
-                {'category': '白酒', 'salesMultiple': 4.5, 'highEndRatio': 42.5},
-                {'category': '红酒', 'salesMultiple': 2.8, 'highEndRatio': 35.2},
-                {'category': '啤酒', 'salesMultiple': 1.8, 'highEndRatio': 15.5},
-                {'category': '威士忌', 'salesMultiple': 2.5, 'highEndRatio': 48.2}
+                {
+                    'category': '白酒',
+                    'salesMultiple': [3.8, 4.0, 4.2, 4.3, 4.5],
+                    'highEndRatio': [38.0, 39.5, 41.0, 42.0, 42.5]
+                },
+                {
+                    'category': '红酒',
+                    'salesMultiple': [2.3, 2.4, 2.5, 2.7, 2.8],
+                    'highEndRatio': [31.0, 32.5, 33.8, 34.5, 35.2]
+                },
+                {
+                    'category': '啤酒',
+                    'salesMultiple': [1.5, 1.6, 1.7, 1.7, 1.8],
+                    'highEndRatio': [13.0, 13.8, 14.5, 15.0, 15.5]
+                },
+                {
+                    'category': '威士忌',
+                    'salesMultiple': [1.8, 2.0, 2.1, 2.3, 2.5],
+                    'highEndRatio': [41.0, 43.5, 45.8, 47.0, 48.2]
+                }
             ]
         },
         {
             'festival': '情人节',
             'data': [
-                {'category': '白酒', 'salesMultiple': 1.2, 'highEndRatio': 28.5},
-                {'category': '红酒', 'salesMultiple': 6.8, 'highEndRatio': 52.5},
-                {'category': '香槟/起泡酒', 'salesMultiple': 8.2, 'highEndRatio': 62.8},
-                {'category': '威士忌', 'salesMultiple': 1.8, 'highEndRatio': 42.5}
+                {
+                    'category': '白酒',
+                    'salesMultiple': [1.0, 1.0, 1.1, 1.1, 1.2],
+                    'highEndRatio': [24.0, 25.5, 27.0, 28.0, 28.5]
+                },
+                {
+                    'category': '红酒',
+                    'salesMultiple': [5.2, 5.6, 6.0, 6.4, 6.8],
+                    'highEndRatio': [46.0, 48.0, 50.0, 51.2, 52.5]
+                },
+                {
+                    'category': '香槟/起泡酒',
+                    'salesMultiple': [6.0, 6.5, 7.0, 7.6, 8.2],
+                    'highEndRatio': [55.0, 57.5, 59.8, 61.2, 62.8]
+                },
+                {
+                    'category': '威士忌',
+                    'salesMultiple': [1.3, 1.4, 1.5, 1.7, 1.8],
+                    'highEndRatio': [36.0, 38.0, 40.2, 41.5, 42.5]
+                }
             ]
         },
         {
             'festival': '中秋节',
             'data': [
-                {'category': '白酒', 'salesMultiple': 3.8, 'highEndRatio': 52.5},
-                {'category': '红酒', 'salesMultiple': 3.2, 'highEndRatio': 48.2},
-                {'category': '啤酒', 'salesMultiple': 1.5, 'highEndRatio': 18.5},
-                {'category': '威士忌', 'salesMultiple': 2.8, 'highEndRatio': 55.8}
+                {
+                    'category': '白酒',
+                    'salesMultiple': [3.1, 3.3, 3.5, 3.7, 3.8],
+                    'highEndRatio': [47.0, 48.5, 50.5, 51.8, 52.5]
+                },
+                {
+                    'category': '红酒',
+                    'salesMultiple': [2.5, 2.7, 2.9, 3.1, 3.2],
+                    'highEndRatio': [43.0, 44.5, 46.2, 47.5, 48.2]
+                },
+                {
+                    'category': '啤酒',
+                    'salesMultiple': [1.2, 1.3, 1.4, 1.5, 1.5],
+                    'highEndRatio': [15.0, 16.0, 17.0, 18.0, 18.5]
+                },
+                {
+                    'category': '威士忌',
+                    'salesMultiple': [2.0, 2.2, 2.4, 2.6, 2.8],
+                    'highEndRatio': [48.0, 50.0, 52.5, 54.2, 55.8]
+                }
             ]
         },
         {
             'festival': '国庆',
             'data': [
-                {'category': '白酒', 'salesMultiple': 2.8, 'highEndRatio': 38.5},
-                {'category': '红酒', 'salesMultiple': 2.2, 'highEndRatio': 32.5},
-                {'category': '啤酒', 'salesMultiple': 2.5, 'highEndRatio': 22.5},
-                {'category': '威士忌', 'salesMultiple': 2.0, 'highEndRatio': 40.2}
+                {
+                    'category': '白酒',
+                    'salesMultiple': [2.3, 2.4, 2.6, 2.7, 2.8],
+                    'highEndRatio': [33.0, 34.5, 36.2, 37.5, 38.5]
+                },
+                {
+                    'category': '红酒',
+                    'salesMultiple': [1.7, 1.8, 2.0, 2.1, 2.2],
+                    'highEndRatio': [28.0, 29.5, 30.8, 31.8, 32.5]
+                },
+                {
+                    'category': '啤酒',
+                    'salesMultiple': [1.9, 2.1, 2.2, 2.4, 2.5],
+                    'highEndRatio': [18.0, 19.5, 20.8, 21.8, 22.5]
+                },
+                {
+                    'category': '威士忌',
+                    'salesMultiple': [1.5, 1.6, 1.8, 1.9, 2.0],
+                    'highEndRatio': [34.0, 35.8, 37.5, 39.0, 40.2]
+                }
             ]
         },
         {
             'festival': '双十一',
             'data': [
-                {'category': '白酒', 'salesMultiple': 3.2, 'highEndRatio': 35.2},
-                {'category': '红酒', 'salesMultiple': 4.5, 'highEndRatio': 28.5},
-                {'category': '啤酒', 'salesMultiple': 3.8, 'highEndRatio': 15.2},
-                {'category': '威士忌', 'salesMultiple': 4.2, 'highEndRatio': 38.5}
+                {
+                    'category': '白酒',
+                    'salesMultiple': [2.2, 2.5, 2.8, 3.0, 3.2],
+                    'highEndRatio': [29.0, 31.0, 32.8, 34.2, 35.2]
+                },
+                {
+                    'category': '红酒',
+                    'salesMultiple': [3.0, 3.4, 3.8, 4.2, 4.5],
+                    'highEndRatio': [23.0, 24.5, 26.2, 27.5, 28.5]
+                },
+                {
+                    'category': '啤酒',
+                    'salesMultiple': [2.5, 2.9, 3.2, 3.6, 3.8],
+                    'highEndRatio': [11.0, 12.2, 13.5, 14.5, 15.2]
+                },
+                {
+                    'category': '威士忌',
+                    'salesMultiple': [2.8, 3.2, 3.6, 3.9, 4.2],
+                    'highEndRatio': [32.0, 34.0, 36.0, 37.5, 38.5]
+                }
             ]
         }
     ]

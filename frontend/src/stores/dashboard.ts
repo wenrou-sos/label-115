@@ -14,7 +14,8 @@ import type {
   AnomalySeverity,
   MetricMeta,
   CustomMetric,
-  CustomMetricsConfig
+  CustomMetricsConfig,
+  ForecastResponse
 } from '@/types'
 import { METRIC_CATEGORY_LABELS } from '@/types'
 type MessageApi = {
@@ -102,6 +103,11 @@ export const AVAILABLE_METRICS: MetricMeta[] = [
 
 const DEFAULT_VALID_REGIONS = ['华东', '华南', '华北', '华中', '西南', '西北', '东北', '成渝', '沿海']
 const DEFAULT_VALID_CATEGORIES = ['白酒', '红酒', '啤酒', '黄酒', '果酒清酒', '精酿啤酒']
+function getLatestValue(val: number | number[]): number {
+  if (Array.isArray(val)) return val.length > 0 ? val[val.length - 1] : 0
+  return val
+}
+
 const VALID_YEAR_MIN = 2000
 const VALID_YEAR_MAX = 2100
 
@@ -227,6 +233,8 @@ export const useDashboardStore = defineStore('dashboard', () => {
   const ageGroups = ref<AgeGroupData[]>([])
   const festivals = ref<FestivalData[]>([])
   const importCompare = ref<ImportCompareData[]>([])
+  const categoryForecast = ref<ForecastResponse | null>(null)
+  const festivalForecast = ref<ForecastResponse | null>(null)
 
   const filters = ref<DashboardFilters>({ ...DEFAULT_FILTERS })
   const anomalySettings = ref<AnomalySettings>({ ...DEFAULT_ANOMALY_SETTINGS })
@@ -390,11 +398,11 @@ export const useDashboardStore = defineStore('dashboard', () => {
         const fest = filteredFestivals.value.find(f => f.festival === festivalMap[festKey])
         if (fest) {
           if (catKey === 'highEnd') {
-            const avg = fest.data.reduce((s, d) => s + d.highEndRatio, 0) / fest.data.length
+            const avg = fest.data.reduce((s, d) => s + getLatestValue(d.highEndRatio), 0) / fest.data.length
             return Number(avg.toFixed(1))
           }
           const item = fest.data.find(d => d.category === catMap[catKey])
-          if (item) return Number(item.salesMultiple.toFixed(1))
+          if (item) return Number(getLatestValue(item.salesMultiple).toFixed(1))
         }
         return '-'
       }
@@ -1009,6 +1017,10 @@ export const useDashboardStore = defineStore('dashboard', () => {
         fetchImportCompare()
       ])
       runAnomalyDetection()
+      await Promise.all([
+        fetchCategoryForecast(),
+        fetchFestivalForecast()
+      ]).catch(() => {})
     } catch (e) {
       error.value = e instanceof Error ? e.message : '加载数据失败'
     } finally {
@@ -1054,6 +1066,16 @@ export const useDashboardStore = defineStore('dashboard', () => {
     importCompare.value = res.data.importCompare
   }
 
+  async function fetchCategoryForecast() {
+    const res = await api.getForecast({ module: 'category', steps: 2 })
+    categoryForecast.value = res.data
+  }
+
+  async function fetchFestivalForecast() {
+    const res = await api.getForecast({ module: 'festival', metric: 'salesMultiple', steps: 2 })
+    festivalForecast.value = res.data
+  }
+
   function setRegion(region: string | null) {
     filters.value.selectedRegion = region || 'all'
     fetchRegion()
@@ -1083,6 +1105,8 @@ export const useDashboardStore = defineStore('dashboard', () => {
     anomalySettings,
     anomalies,
     customMetrics,
+    categoryForecast,
+    festivalForecast,
     anomalyCount,
     criticalAnomalyCount,
     categoryGrowthAnomalies,
@@ -1123,6 +1147,8 @@ export const useDashboardStore = defineStore('dashboard', () => {
     getMetricTrend,
     isMetricAvailable,
     loadCustomMetrics,
-    saveCustomMetrics
+    saveCustomMetrics,
+    fetchCategoryForecast,
+    fetchFestivalForecast
   }
 })

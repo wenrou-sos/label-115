@@ -57,6 +57,19 @@ def get_import_compare():
     return success_response(data)
 
 
+@api_bp.route('/forecast', methods=['GET'])
+def get_forecast():
+    module = request.args.get('module', 'category')
+    entity = request.args.get('entity', None)
+    metric = request.args.get('metric', None)
+    try:
+        steps = int(request.args.get('steps', 2))
+    except (TypeError, ValueError):
+        steps = 2
+    data = data_service.get_forecast(module=module, entity=entity, metric=metric, steps=steps)
+    return success_response(data)
+
+
 @api_bp.route('/reload', methods=['POST'])
 def reload_data():
     data_service.reload()

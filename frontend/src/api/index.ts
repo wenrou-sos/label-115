@@ -7,7 +7,8 @@ import type {
   PriceRangeResponse,
   AgeGroupResponse,
   FestivalResponse,
-  ImportCompareResponse
+  ImportCompareResponse,
+  ForecastResponse
 } from '@/types'
 
 const request = axios.create({
@@ -51,4 +52,13 @@ export const api = {
   getImportCompare(): Promise<ApiResponse<ImportCompareResponse>> {
     return request.get('/import-compare')
   },
+
+  getForecast(params: {
+    module: 'category' | 'festival' | string
+    entity?: string
+    metric?: string
+    steps?: number
+  }): Promise<ApiResponse<ForecastResponse>> {
+    return request.get('/forecast', { params })
+  }
 }

@@ -314,14 +314,51 @@ const barOption = computed<EChartsOption>(() => {
 })
 
 const lineOption = computed<EChartsOption>(() => {
-  const years = store.filteredYears.length > 0 ? store.filteredYears : store.years
+  const forecast = store.categoryForecast
+  const historicalYears = store.filteredYears.length > 0 ? store.filteredYears : store.years
+  const forecastYears = forecast?.forecastYears || []
+  const allYears = [...historicalYears, ...forecastYears]
   const highlightMarks = store.anomalySettings.highlightMarks
 
-  const series = store.filteredCategories.map(c => {
+  const actualSeries: any[] = []
+  const forecastSeries: any[] = []
+  const markLines: any[] = []
+
+  if (forecast && forecastYears.length > 0) {
+    markLines.push({
+      xAxis: historicalYears[historicalYears.length - 1],
+      lineStyle: {
+        color: '#E6C35C',
+        type: 'dashed',
+        width: 1,
+        opacity: 0.6
+      },
+      label: {
+        formatter: '预测',
+        position: 'start',
+        color: '#E6C35C',
+        fontSize: 11,
+        fontWeight: 600,
+        backgroundColor: 'rgba(230, 195, 92, 0.08)',
+        padding: [2, 6],
+        borderRadius: 4
+      }
+    })
+  }
+
+  store.filteredCategories.forEach(c => {
+    const catForecast = forecast?.series?.find(s => s.name === c.name)
+    const historical = c.growth
+    const paddedActual = [...historical, ...Array(forecastYears.length).fill(null)]
+    const padding = Array(historical.length - 1).fill(null)
+    const bridge = historical.length > 0 ? [historical[historical.length - 1]] : []
+    const fc = catForecast?.forecast || []
+    const paddedForecast = [...padding, ...bridge, ...fc]
+
     const catAnomalies = highlightMarks ? store.getCategoryAnomaliesByName(c.name) : []
     const markPointData: any[] = []
     catAnomalies.forEach(a => {
-      const idx = years.indexOf(a.timePoint)
+      const idx = allYears.indexOf(a.timePoint)
       if (idx >= 0) {
         markPointData.push({
           name: `${a.message}`,
@@ -344,18 +381,12 @@ const lineOption = computed<EChartsOption>(() => {
             fontSize: 10,
             fontWeight: 700,
             formatter: a.changePct > 0 ? `+${a.changePct.toFixed(0)}%!` : `${a.changePct.toFixed(0)}%!`
-          },
-          emphasis: {
-            itemStyle: {
-              shadowBlur: a.severity === 'critical' ? 20 : 12,
-              shadowColor: a.severity === 'critical' ? '#ef4444' : '#f59e0b'
-            }
           }
         })
       }
     })
 
-    years.forEach((y, yi) => {
+    historicalYears.forEach((y, yi) => {
       const ann = annotations.getAnnotation('category', c.name, '增速', y)
       if (ann) {
         const value = c.growth[yi]
@@ -378,16 +409,13 @@ const lineOption = computed<EChartsOption>(() => {
               color: '#fff',
               fontSize: 10,
               formatter: '📝'
-            },
-            emphasis: {
-              label: { show: true, formatter: ann.content, fontSize: 12, width: 160, overflow: 'break' }
             }
           })
         }
       }
     })
 
-    return {
+    actualSeries.push({
       name: c.name,
       type: 'line' as const,
       smooth: true,
@@ -395,7 +423,7 @@ const lineOption = computed<EChartsOption>(() => {
       symbolSize: 7,
       lineStyle: { width: 2 },
       itemStyle: { color: c.color },
-      data: c.growth,
+      data: paddedActual,
       animationDuration: 800,
       animationEasing: 'cubicOut' as const,
       animationDelay: (idx: number) => idx * 40,
@@ -406,7 +434,38 @@ const lineOption = computed<EChartsOption>(() => {
         data: markPointData,
         animation: true,
         animationDuration: 500
+      } : undefined,
+      markLine: markLines.length > 0 ? {
+        silent: true,
+        symbol: 'none',
+        lineStyle: { width: 0 },
+        data: markLines
       } : undefined
+    })
+
+    if (catForecast && fc.length > 0) {
+      forecastSeries.push({
+        name: `${c.name}(预测)`,
+        type: 'line' as const,
+        smooth: true,
+        symbol: 'circle',
+        symbolSize: 5,
+        showSymbol: false,
+        lineStyle: {
+          type: 'dashed' as const,
+          width: 2,
+          color: '#E6C35C',
+          opacity: 0.85
+        },
+        itemStyle: { color: '#E6C35C' },
+        data: paddedForecast,
+        animationDuration: 800,
+        tooltip: {
+          valueFormatter: (v: any) => v != null ? `${v}% (预测)` : ''
+        },
+        legendHoverLink: false,
+        z: 1
+      })
     }
   })
 
@@ -417,16 +476,14 @@ const lineOption = computed<EChartsOption>(() => {
         const list = Array.isArray(params) ? params : [params]
         let html = `<div style="font-weight:bold;margin-bottom:6px;color:#D4AF37">${list[0]?.axisValue || ''}</div>`
         list.forEach((p: any) => {
-          const ann = annotations.getAnnotation('category', p.seriesName, '增速', list[0]?.axisValue)
+          if (p.value == null) return
+          const isForecast = String(p.seriesName).includes('预测')
+          const seriesKey = String(p.seriesName).replace('(预测)', '')
+          const ann = annotations.getAnnotation('category', seriesKey, '增速', list[0]?.axisValue)
           html += `<div style="display:flex;align-items:center;gap:6px;margin:3px 0">
             <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${p.color}"></span>
-            <span>${p.seriesName}：<b>${p.value}%</b></span>
+            <span>${p.seriesName}：<b>${p.value}%</b>${isForecast ? ' <span style="color:#E6C35C;font-size:11px">预测</span>' : ''}</span>
           </div>`
-          if (p.marker && p.data && typeof p.data === 'object' && p.data.value && String(p.data.value).includes('%')) {
-            html += `<div style="font-size:11px;color:${String(p.data.value).startsWith('+') ? '#fca5a5' : '#fcd34d'};margin-left:14px">
-              ⚠ ${p.data.value} 异常波动
-            </div>`
-          }
           if (ann) {
             html += `<div style="margin:4px 0 4px 14px;padding:3px 6px;background:${ann.color}22;border-left:2px solid ${ann.color};border-radius:3px;font-size:11px;color:#e5e5ea">
               📝 ${ann.content}
@@ -442,8 +499,12 @@ const lineOption = computed<EChartsOption>(() => {
     xAxis: {
       type: 'category',
       boundaryGap: false,
-      data: years,
-      ...darkAxisStyle
+      data: allYears,
+      ...darkAxisStyle,
+      axisLabel: {
+        ...darkAxisStyle.axisLabel,
+        formatter: (v: string) => forecastYears.includes(v) ? `${v}\n预测` : v
+      }
     },
     yAxis: {
       type: 'value',
@@ -452,19 +513,56 @@ const lineOption = computed<EChartsOption>(() => {
       splitLine: darkAxisStyle.splitLine
     },
     animationDuration: 800,
-    series
+    series: [...actualSeries, ...forecastSeries]
   }
 })
 
 const areaOption = computed<EChartsOption>(() => {
-  const years = store.filteredYears.length > 0 ? store.filteredYears : store.years
+  const forecast = store.categoryForecast
+  const historicalYears = store.filteredYears.length > 0 ? store.filteredYears : store.years
+  const forecastYears = forecast?.forecastYears || []
+  const allYears = [...historicalYears, ...forecastYears]
   const highlightMarks = store.anomalySettings.highlightMarks
 
-  const series = store.filteredCategories.map(c => {
+  const actualSeries: any[] = []
+  const forecastSeries: any[] = []
+  const markLines: any[] = []
+
+  if (forecast && forecastYears.length > 0) {
+    markLines.push({
+      xAxis: historicalYears[historicalYears.length - 1],
+      lineStyle: {
+        color: '#E6C35C',
+        type: 'dashed',
+        width: 1,
+        opacity: 0.6
+      },
+      label: {
+        formatter: '预测',
+        position: 'start',
+        color: '#E6C35C',
+        fontSize: 11,
+        fontWeight: 600,
+        backgroundColor: 'rgba(230, 195, 92, 0.08)',
+        padding: [2, 6],
+        borderRadius: 4
+      }
+    })
+  }
+
+  store.filteredCategories.forEach(c => {
+    const catForecast = forecast?.series?.find(s => s.name === c.name)
+    const historical = c.growth
+    const paddedActual = [...historical, ...Array(forecastYears.length).fill(null)]
+    const padding = Array(historical.length - 1).fill(null)
+    const bridge = historical.length > 0 ? [historical[historical.length - 1]] : []
+    const fc = catForecast?.forecast || []
+    const paddedForecast = [...padding, ...bridge, ...fc]
+
     const catAnomalies = highlightMarks ? store.getCategoryAnomaliesByName(c.name) : []
     const markPointData: any[] = []
     catAnomalies.forEach(a => {
-      const idx = years.indexOf(a.timePoint)
+      const idx = allYears.indexOf(a.timePoint)
       if (idx >= 0) {
         markPointData.push({
           name: `${a.message}`,
@@ -487,18 +585,12 @@ const areaOption = computed<EChartsOption>(() => {
             fontSize: 10,
             fontWeight: 700,
             formatter: a.changePct > 0 ? `+${a.changePct.toFixed(0)}%!` : `${a.changePct.toFixed(0)}%!`
-          },
-          emphasis: {
-            itemStyle: {
-              shadowBlur: a.severity === 'critical' ? 20 : 12,
-              shadowColor: a.severity === 'critical' ? '#ef4444' : '#f59e0b'
-            }
           }
         })
       }
     })
 
-    years.forEach((y, yi) => {
+    historicalYears.forEach((y, yi) => {
       const ann = annotations.getAnnotation('category', c.name, '增速', y)
       if (ann) {
         const value = c.growth[yi]
@@ -521,16 +613,13 @@ const areaOption = computed<EChartsOption>(() => {
               color: '#fff',
               fontSize: 10,
               formatter: '📝'
-            },
-            emphasis: {
-              label: { show: true, formatter: ann.content, fontSize: 12, width: 160, overflow: 'break' }
             }
           })
         }
       }
     })
 
-    return {
+    actualSeries.push({
       name: c.name,
       type: 'line' as const,
       smooth: true,
@@ -548,7 +637,7 @@ const areaOption = computed<EChartsOption>(() => {
           ]
         }
       },
-      data: c.growth,
+      data: paddedActual,
       animationDuration: 800,
       animationEasing: 'cubicOut' as const,
       animationDelay: (idx: number) => idx * 40,
@@ -559,7 +648,38 @@ const areaOption = computed<EChartsOption>(() => {
         data: markPointData,
         animation: true,
         animationDuration: 500
+      } : undefined,
+      markLine: markLines.length > 0 ? {
+        silent: true,
+        symbol: 'none',
+        lineStyle: { width: 0 },
+        data: markLines
       } : undefined
+    })
+
+    if (catForecast && fc.length > 0) {
+      forecastSeries.push({
+        name: `${c.name}(预测)`,
+        type: 'line' as const,
+        smooth: true,
+        symbol: 'circle',
+        symbolSize: 5,
+        showSymbol: false,
+        lineStyle: {
+          type: 'dashed' as const,
+          width: 2,
+          color: '#E6C35C',
+          opacity: 0.85
+        },
+        itemStyle: { color: '#E6C35C' },
+        data: paddedForecast,
+        animationDuration: 800,
+        tooltip: {
+          valueFormatter: (v: any) => v != null ? `${v}% (预测)` : ''
+        },
+        legendHoverLink: false,
+        z: 1
+      })
     }
   })
 
@@ -570,16 +690,14 @@ const areaOption = computed<EChartsOption>(() => {
         const list = Array.isArray(params) ? params : [params]
         let html = `<div style="font-weight:bold;margin-bottom:6px;color:#D4AF37">${list[0]?.axisValue || ''}</div>`
         list.forEach((p: any) => {
-          const ann = annotations.getAnnotation('category', p.seriesName, '增速', list[0]?.axisValue)
+          if (p.value == null) return
+          const isForecast = String(p.seriesName).includes('预测')
+          const seriesKey = String(p.seriesName).replace('(预测)', '')
+          const ann = annotations.getAnnotation('category', seriesKey, '增速', list[0]?.axisValue)
           html += `<div style="display:flex;align-items:center;gap:6px;margin:3px 0">
             <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${p.color}"></span>
-            <span>${p.seriesName}：<b>${p.value}%</b></span>
+            <span>${p.seriesName}：<b>${p.value}%</b>${isForecast ? ' <span style="color:#E6C35C;font-size:11px">预测</span>' : ''}</span>
           </div>`
-          if (p.marker && p.data && typeof p.data === 'object' && p.data.value && String(p.data.value).includes('%')) {
-            html += `<div style="font-size:11px;color:${String(p.data.value).startsWith('+') ? '#fca5a5' : '#fcd34d'};margin-left:14px">
-              ⚠ ${p.data.value} 异常波动
-            </div>`
-          }
           if (ann) {
             html += `<div style="margin:4px 0 4px 14px;padding:3px 6px;background:${ann.color}22;border-left:2px solid ${ann.color};border-radius:3px;font-size:11px;color:#e5e5ea">
               📝 ${ann.content}
@@ -595,8 +713,12 @@ const areaOption = computed<EChartsOption>(() => {
     xAxis: {
       type: 'category',
       boundaryGap: false,
-      data: years,
-      ...darkAxisStyle
+      data: allYears,
+      ...darkAxisStyle,
+      axisLabel: {
+        ...darkAxisStyle.axisLabel,
+        formatter: (v: string) => forecastYears.includes(v) ? `${v}\n预测` : v
+      }
     },
     yAxis: {
       type: 'value',
@@ -605,7 +727,7 @@ const areaOption = computed<EChartsOption>(() => {
       splitLine: darkAxisStyle.splitLine
     },
     animationDuration: 800,
-    series
+    series: [...actualSeries, ...forecastSeries]
   }
 })
 

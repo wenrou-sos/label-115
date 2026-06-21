@@ -70,8 +70,8 @@ export interface AgeGroupResponse {
 
 export interface FestivalItem {
   category: string
-  salesMultiple: number
-  highEndRatio: number
+  salesMultiple: number | number[]
+  highEndRatio: number | number[]
 }
 
 export interface FestivalData {
@@ -81,6 +81,32 @@ export interface FestivalData {
 
 export interface FestivalResponse {
   festivals: FestivalData[]
+}
+
+export interface ForecastSeries {
+  name: string
+  color?: string
+  historical: number[]
+  forecast: number[]
+}
+
+export interface ForecastFestivalItem {
+  category: string
+  historical: number[]
+  forecast: number[]
+}
+
+export interface ForecastFestival {
+  festival: string
+  data: ForecastFestivalItem[]
+}
+
+export interface ForecastResponse {
+  module: 'category' | 'festival' | string
+  historicalYears: string[]
+  forecastYears: string[]
+  series?: ForecastSeries[]
+  festivals?: ForecastFestival[]
 }
 
 export interface ImportCompareData {
