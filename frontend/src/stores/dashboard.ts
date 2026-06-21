@@ -26,6 +26,46 @@ export const DEFAULT_FILTERS: DashboardFilters = {
   selectedRegion: 'all'
 }
 
+const DEFAULT_VALID_REGIONS = ['华东', '华南', '华北', '华中', '西南', '西北', '东北', '成渝', '沿海']
+const DEFAULT_VALID_CATEGORIES = ['白酒', '红酒', '啤酒', '黄酒', '果酒清酒', '精酿啤酒']
+const VALID_YEAR_MIN = 2000
+const VALID_YEAR_MAX = 2100
+
+function sanitizeFilters(input: DashboardFilters, validRegions?: string[], validCategories?: string[]): DashboardFilters {
+  const result: DashboardFilters = {
+    yearRange: [...DEFAULT_FILTERS.yearRange] as [number, number],
+    selectedCategories: [],
+    selectedRegion: DEFAULT_FILTERS.selectedRegion
+  }
+
+  const allowedRegions = new Set(['all', ...(validRegions ?? DEFAULT_VALID_REGIONS)])
+  const allowedCategories = new Set(validCategories ?? DEFAULT_VALID_CATEGORIES)
+
+  if (typeof input.selectedRegion === 'string' && allowedRegions.has(input.selectedRegion)) {
+    result.selectedRegion = input.selectedRegion
+  }
+
+  if (Array.isArray(input.selectedCategories)) {
+    result.selectedCategories = input.selectedCategories.filter(
+      c => typeof c === 'string' && c.length > 0 && allowedCategories.has(c)
+    )
+  }
+
+  if (Array.isArray(input.yearRange) && input.yearRange.length === 2) {
+    let [start, end] = input.yearRange
+    start = typeof start === 'number' && isFinite(start) ? Math.round(start) : NaN
+    end = typeof end === 'number' && isFinite(end) ? Math.round(end) : NaN
+    if (!isNaN(start) && !isNaN(end)
+        && start >= VALID_YEAR_MIN && start <= VALID_YEAR_MAX
+        && end >= VALID_YEAR_MIN && end <= VALID_YEAR_MAX
+        && start <= end) {
+      result.yearRange = [start, end]
+    }
+  }
+
+  return result
+}
+
 export function buildFilterQuery(filters: DashboardFilters): Record<string, string> {
   const params: Record<string, string> = {}
   const { yearRange, selectedCategories, selectedRegion } = filters
@@ -43,26 +83,33 @@ export function buildFilterQuery(filters: DashboardFilters): Record<string, stri
   return params
 }
 
-export function parseFilterQuery(query: Record<string, any>, filters: DashboardFilters): boolean {
-  let hasChanges = false
+export function parseFilterQuery(query: Record<string, any>, filters: DashboardFilters, validRegions?: string[], validCategories?: string[]): boolean {
+  const raw: DashboardFilters = {
+    yearRange: [...DEFAULT_FILTERS.yearRange] as [number, number],
+    selectedCategories: [],
+    selectedRegion: DEFAULT_FILTERS.selectedRegion
+  }
 
   if (query.region && typeof query.region === 'string') {
-    filters.selectedRegion = query.region
-    hasChanges = true
+    raw.selectedRegion = query.region
   }
   if (query.categories && typeof query.categories === 'string') {
-    filters.selectedCategories = query.categories.split(',').filter(Boolean)
-    hasChanges = true
+    raw.selectedCategories = query.categories.split(',').filter(Boolean)
   }
   if (query.year && typeof query.year === 'string') {
     const match = query.year.match(/(\d{4})-(\d{4})/)
     if (match) {
-      filters.yearRange = [parseInt(match[1]), parseInt(match[2])]
-      hasChanges = true
+      raw.yearRange = [parseInt(match[1]), parseInt(match[2])]
     }
   }
 
-  return hasChanges
+  const clean = sanitizeFilters(raw, validRegions, validCategories)
+  const original = JSON.stringify(filters)
+  filters.yearRange = clean.yearRange
+  filters.selectedCategories = clean.selectedCategories
+  filters.selectedRegion = clean.selectedRegion
+
+  return JSON.stringify(filters) !== original
 }
 
 export function buildShareUrl(filters: DashboardFilters, path: string): string {
@@ -122,7 +169,8 @@ export const useDashboardStore = defineStore('dashboard', () => {
       const saved = localStorage.getItem(STORAGE_KEY)
       if (saved) {
         const parsed = JSON.parse(saved)
-        filters.value = { ...DEFAULT_FILTERS, ...parsed }
+        const clean = sanitizeFilters({ ...DEFAULT_FILTERS, ...parsed }, regions.value.length > 0 ? regions.value : undefined, categories.value.length > 0 ? categories.value.map(c => c.name) : undefined)
+        filters.value = clean
         return true
       }
     } catch (e) {
@@ -152,11 +200,14 @@ export const useDashboardStore = defineStore('dashboard', () => {
   function initFilters(route: RouteLocationNormalizedLoaded) {
     isSyncing = true
     try {
-      const fromUrl = parseFilterQuery(route.query as Record<string, any>, filters.value)
+      const fromUrl = parseFilterQuery(
+        route.query as Record<string, any>,
+        filters.value,
+        undefined,
+        undefined
+      )
       if (!fromUrl) {
         loadFiltersFromStorage()
-      } else {
-        saveFiltersToStorage()
       }
     } finally {
       setTimeout(() => {
