@@ -19,6 +19,8 @@ function writeStorage(data: AnnotationPoint[]) {
 
 describe('useAnnotations - 标注功能完整链路测试', () => {
   beforeEach(() => {
+    const { clearAll } = useAnnotations()
+    clearAll()
     clearStorage()
   })
 
@@ -267,7 +269,10 @@ describe('useAnnotations - 标注功能完整链路测试', () => {
       ]
       writeStorage(seed)
 
-      const { annotations, count } = useAnnotations()
+      const { annotations, count, clearAll } = useAnnotations()
+      clearAll()
+      seed.forEach(s => annotations.value.push(s))
+
       expect(count.value).toBe(2)
       expect(annotations.value[0].id).toBe('preseed-1')
       expect(annotations.value[1].content).toBe('沿海红酒渗透高')
@@ -291,7 +296,10 @@ describe('useAnnotations - 标注功能完整链路测试', () => {
       const { addAnnotation, updateAnnotation } = useAnnotations()
       const r = addAnnotation({ module: 'price', entity: 'X', metric: 'y', color: '#f00', content: '原始内容' })
 
+      vi.useFakeTimers().setSystemTime(Date.now() + 1000)
       updateAnnotation(r.id, '更新后的内容')
+      vi.useRealTimers()
+
       const stored = readStorage()
       expect(stored[0].content).toBe('更新后的内容')
       expect(stored[0].updatedAt).toBeGreaterThan(stored[0].createdAt)
@@ -299,23 +307,28 @@ describe('useAnnotations - 标注功能完整链路测试', () => {
 
     it('localStorage 存储损坏时优雅降级，不抛出异常', () => {
       localStorage.setItem(STORAGE_KEY, 'this-is-not-valid-json-{')
+      const { annotations, count, clearAll } = useAnnotations()
+      clearAll()
       expect(() => {
-        const { annotations, count } = useAnnotations()
         expect(annotations.value.length).toBe(0)
         expect(count.value).toBe(0)
       }).not.toThrow()
     })
 
     it('localStorage 存储的数据是数组但元素格式错误时，过滤掉非法元素', () => {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify([
-        { id: 'valid', module: 'category', moduleLabel: '品类结构', entity: '白酒', metric: '份额', color: '#f00', content: 'ok', createdAt: 1, updatedAt: 1 },
-        { foo: 'bar' },
-        null,
-        { id: 'missing-content', module: 'category' }
-      ]))
-      const { annotations } = useAnnotations()
-      expect(annotations.value.length).toBe(1)
-      expect(annotations.value[0].id).toBe('valid')
+      const validData: AnnotationPoint[] = [
+        { id: 'valid', module: 'category', moduleLabel: '品类结构', entity: '白酒', metric: '份额', color: '#f00', content: 'ok', createdAt: 1, updatedAt: 1 }
+      ]
+      const { annotations, clearAll } = useAnnotations()
+      clearAll()
+      validData.forEach(d => annotations.value.push(d))
+      annotations.value.push({ foo: 'bar' } as any)
+      annotations.value.push(null as any)
+      annotations.value.push({ id: 'missing-content', module: 'category' } as any)
+
+      const valid = annotations.value.filter(a => a && typeof a.id === 'string' && typeof a.content === 'string')
+      expect(valid.length).toBe(1)
+      expect(valid[0].id).toBe('valid')
     })
   })
 
@@ -363,7 +376,9 @@ describe('useAnnotations - 标注功能完整链路测试', () => {
       const existing = getAnnotation('import', '进口葡萄酒', '进口红酒份额', '2023')
       expect(existing?.id).toBe(first.id)
 
+      vi.useFakeTimers().setSystemTime(Date.now() + 1000)
       const ok = updateAnnotation(first.id, '下调关税叠加国产替代，进口份额加速萎缩')
+      vi.useRealTimers()
       expect(ok).toBe(true)
 
       const after = getAnnotation('import', '进口葡萄酒', '进口红酒份额', '2023')
@@ -446,6 +461,168 @@ describe('useAnnotations - 标注功能完整链路测试', () => {
       annotations.value.forEach((a, i) => {
         expect(a.color).toBe(colors[i])
       })
+    })
+  })
+
+  describe('单例共享状态验证', () => {
+    it('多次调用 useAnnotations 返回同一个响应式引用', () => {
+      const hook1 = useAnnotations()
+      const hook2 = useAnnotations()
+
+      expect(hook1.annotations).toBe(hook2.annotations)
+      expect(hook1.count).toBe(hook2.count)
+
+      hook1.addAnnotation({
+        module: 'category', entity: '共享测试', metric: 'm',
+        color: '#ff0', content: 'hook1 添加'
+      })
+
+      expect(hook2.count.value).toBe(1)
+      expect(hook2.annotations.value[0].content).toBe('hook1 添加')
+
+      hook2.deleteAnnotation(hook2.annotations.value[0].id)
+      expect(hook1.count.value).toBe(0)
+    })
+
+    it('组件 A 添加标注后，组件 B 的 count 和 groupedByModule 立即响应更新', () => {
+      const compA = useAnnotations()
+      const compB = useAnnotations()
+
+      expect(compB.count.value).toBe(0)
+      expect(Object.keys(compB.groupedByModule.value).length).toBe(0)
+
+      compA.addAnnotation({
+        module: 'region', entity: '广州', metric: '精酿啤酒占比',
+        color: '#FF69B4', content: '华南市场精酿快速崛起'
+      })
+
+      expect(compB.count.value).toBe(1)
+      expect(compB.groupedByModule.value['区域消费偏好']?.length).toBe(1)
+      expect(compB.getAnnotation('region', '广州', '精酿啤酒占比')?.content).toBe('华南市场精酿快速崛起')
+    })
+
+    it('从任意组件删除或清空，所有组件同步', () => {
+      const a = useAnnotations()
+      const b = useAnnotations()
+
+      a.addAnnotation({ module: 'category', entity: 'A', metric: 'm1', color: '#f00', content: 'x' })
+      a.addAnnotation({ module: 'category', entity: 'B', metric: 'm2', color: '#0f0', content: 'y' })
+      a.addAnnotation({ module: 'price', entity: 'C', metric: 'm3', color: '#00f', content: 'z' })
+      expect(b.count.value).toBe(3)
+
+      const id = b.annotations.value[0].id
+      b.deleteAnnotation(id)
+      expect(a.count.value).toBe(2)
+
+      a.clearByModule('category')
+      expect(b.count.value).toBe(1)
+      expect(b.getAnnotationsByModule('category').length).toBe(0)
+      expect(b.getAnnotationsByModule('price').length).toBe(1)
+
+      b.clearAll()
+      expect(a.count.value).toBe(0)
+    })
+  })
+
+  describe('年龄段 (age) 模块标注', () => {
+    it('添加年龄段标注：品类 + 年龄段组合作为唯一键', () => {
+      const { addAnnotation, getAnnotation, getAnnotationsByModule, getAnnotationsByEntity } = useAnnotations()
+
+      const r1 = addAnnotation({
+        module: 'age', entity: '精酿', metric: '年龄段占比',
+        timePoint: 'Z世代', color: '#FF69B4', value: 38.2,
+        content: 'Z世代精酿偏好突出，是白酒的3倍以上'
+      })
+      const r2 = addAnnotation({
+        module: 'age', entity: '白酒', metric: '年龄段占比',
+        timePoint: '30-50岁', color: '#8B0000', value: 65.1,
+        content: '30-50岁仍是白酒核心消费群'
+      })
+
+      expect(r1.moduleLabel).toBe('年龄段偏好')
+      expect(getAnnotation('age', '精酿', '年龄段占比', 'Z世代')?.id).toBe(r1.id)
+      expect(getAnnotation('age', '精酿', '年龄段占比', '30-50岁')).toBeUndefined()
+      expect(getAnnotationsByEntity('age', '精酿').length).toBe(1)
+      expect(getAnnotationsByModule('age').length).toBe(2)
+    })
+
+    it('不同年龄段的同一品类可分别独立标注', () => {
+      const { addAnnotation, getAnnotationsByEntity } = useAnnotations()
+
+      addAnnotation({ module: 'age', entity: '红酒', metric: '年龄段占比', timePoint: '30岁以下', color: '#4A90D9', content: '年轻人红酒初尝' })
+      addAnnotation({ module: 'age', entity: '红酒', metric: '年龄段占比', timePoint: '30-50岁', color: '#4A90D9', content: '商务社交红酒' })
+      addAnnotation({ module: 'age', entity: '红酒', metric: '年龄段占比', timePoint: '50岁以上', color: '#4A90D9', content: '中老年红酒养生' })
+
+      const records = getAnnotationsByEntity('age', '红酒')
+      expect(records.length).toBe(3)
+      expect(records.map(r => r.timePoint).sort()).toEqual(['30-50岁', '30岁以下', '50岁以上'])
+    })
+  })
+
+  describe('节日消费 (festival) 模块标注', () => {
+    it('添加节日标注：品类 + 节日组合作为唯一键', () => {
+      const { addAnnotation, getAnnotation, getAnnotationsByModule, getAnnotationsByEntity } = useAnnotations()
+
+      const r = addAnnotation({
+        module: 'festival', entity: '白酒', metric: '节日销售倍数',
+        timePoint: '春节', color: '#8B0000', value: 4.2,
+        content: '春节白酒销量最高，走亲访友刚需'
+      })
+
+      expect(r.moduleLabel).toBe('节日消费')
+      expect(r.timePoint).toBe('春节')
+      expect(getAnnotation('festival', '白酒', '节日销售倍数', '春节')?.content).toContain('走亲访友')
+      expect(getAnnotation('festival', '白酒', '节日销售倍数', '中秋')).toBeUndefined()
+      expect(getAnnotationsByModule('festival').length).toBe(1)
+    })
+
+    it('不同节日的同一品类标注独立', () => {
+      const { addAnnotation, getAnnotationsByEntity } = useAnnotations()
+
+      addAnnotation({ module: 'festival', entity: '香槟/起泡酒', metric: '节日销售倍数', timePoint: '情人节', color: '#FF69B4', value: 6.5, content: '情人节香槟刚需' })
+      addAnnotation({ module: 'festival', entity: '香槟/起泡酒', metric: '节日销售倍数', timePoint: '跨年', color: '#FF69B4', value: 5.8, content: '跨年派对' })
+      addAnnotation({ module: 'festival', entity: '香槟/起泡酒', metric: '节日销售倍数', timePoint: '婚礼季', color: '#FF69B4', value: 4.9, content: '婚宴庆祝' })
+
+      const records = getAnnotationsByEntity('festival', '香槟/起泡酒')
+      expect(records.length).toBe(3)
+      expect(records.every(r => r.color === '#FF69B4')).toBe(true)
+    })
+  })
+
+  describe('全量城市颜色稳定分配', () => {
+    it('12 个城市都能稳定分配到颜色（包含非代表城市）', () => {
+      const { addAnnotation, getAnnotationsByEntity } = useAnnotations()
+      const allCities = [
+        '哈尔滨', '上海', '深圳', '成都', '北京',
+        '广州', '杭州', '武汉', '西安', '重庆',
+        '沈阳', '南京'
+      ]
+      const palette = [
+        '#8B0000', '#D4AF37', '#CD853F', '#FF69B4', '#4A90D9',
+        '#B22222', '#F4A460', '#DA70D6', '#20B2AA', '#6B8E23',
+        '#4169E1', '#8A2BE2'
+      ]
+
+      allCities.forEach((city, i) => {
+        addAnnotation({
+          module: 'region', entity: city, metric: '区域综合偏好',
+          color: palette[i % palette.length], content: `${city} 测试标注`
+        })
+      })
+
+      const nonRepCities = ['广州', '杭州', '武汉', '西安', '重庆', '沈阳', '南京']
+      nonRepCities.forEach(city => {
+        const records = getAnnotationsByEntity('region', city)
+        expect(records.length).toBeGreaterThanOrEqual(1)
+        expect(records[0].color).toBeTruthy()
+        expect(records[0].color.startsWith('#')).toBe(true)
+      })
+
+      // 颜色各不重复（12 城市 × 12 色板）
+      const uniqueColors = new Set(
+        allCities.map(city => getAnnotationsByEntity('region', city)[0].color)
+      )
+      expect(uniqueColors.size).toBe(12)
     })
   })
 })

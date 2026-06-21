@@ -39,27 +39,28 @@ function genId(): string {
   return `ann-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 }
 
-export function useAnnotations() {
-  const annotations = ref<AnnotationPoint[]>(loadFromStorage())
+const annotations = ref<AnnotationPoint[]>(loadFromStorage())
 
-  watch(
-    annotations,
-    val => {
-      saveToStorage(val)
-    },
-    { deep: true, flush: 'sync' }
-  )
+watch(
+  annotations,
+  val => {
+    saveToStorage(val)
+  },
+  { deep: true, flush: 'sync' }
+)
 
-  const count = computed(() => annotations.value.length)
+const count = computed(() => annotations.value.length)
 
-  const groupedByModule = computed(() => {
-    const groups: Record<string, AnnotationPoint[]> = {}
-    annotations.value.forEach(a => {
-      if (!groups[a.moduleLabel]) groups[a.moduleLabel] = []
-      groups[a.moduleLabel].push(a)
-    })
-    return groups
+const groupedByModule = computed(() => {
+  const groups: Record<string, AnnotationPoint[]> = {}
+  annotations.value.forEach(a => {
+    if (!groups[a.moduleLabel]) groups[a.moduleLabel] = []
+    groups[a.moduleLabel].push(a)
   })
+  return groups
+})
+
+export function useAnnotations() {
 
   function getAnnotation(
     module: AnnotationModule,

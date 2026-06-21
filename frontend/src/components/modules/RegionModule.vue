@@ -36,7 +36,23 @@ const radarDimensions = [
   { name: '威士忌', max: 100, key: 'whiskey', label: '威士忌占比' }
 ]
 
-const radarColors = ['#8B0000', '#D4AF37', '#CD853F', '#FF69B4', '#4A90D9']
+const radarColors = [
+  '#8B0000', '#D4AF37', '#CD853F', '#FF69B4', '#4A90D9',
+  '#B22222', '#F4A460', '#DA70D6', '#20B2AA', '#6B8E23',
+  '#4169E1', '#8A2BE2'
+]
+
+const cityColorMap = computed<Record<string, string>>(() => {
+  const map: Record<string, string> = {}
+  store.cities.forEach((c, i) => {
+    map[c.city] = radarColors[i % radarColors.length]
+  })
+  return map
+})
+
+function getCityColor(cityName: string): string {
+  return cityColorMap.value[cityName] || radarColors[0]
+}
 
 const showDialog = ref(false)
 const dialogPayload = ref({
@@ -50,8 +66,7 @@ const dialogPayload = ref({
 const existingId = ref<string | null>(null)
 
 function openCityAnnotation(cityName: string, metricName: string, value?: number) {
-  const idx = store.radarCities.findIndex(c => c.city === cityName)
-  const color = radarColors[idx % radarColors.length]
+  const color = getCityColor(cityName)
   const existing = annotations.getAnnotation('region', cityName, metricName)
   existingId.value = existing?.id || null
   const city = store.cities.find(c => c.city === cityName)
@@ -108,9 +123,10 @@ const radarOption = computed<EChartsOption>(() => {
   const cities = store.radarCities
   const highlightMarks = store.anomalySettings.highlightMarks
 
-  const series = cities.map((c, idx) => {
-    const cityAnomalies = highlightMarks ? store.getRegionAnomaliesByCity(c.city) : []
-    const cityAnnotations = annotations.getAnnotationsByEntity('region', c.city)
+  const series = cities.map((c) => {
+      const cityColor = getCityColor(c.city)
+      const cityAnomalies = highlightMarks ? store.getRegionAnomaliesByCity(c.city) : []
+      const cityAnnotations = annotations.getAnnotationsByEntity('region', c.city)
     const markPointData: any[] = []
 
     if (cityAnomalies.length > 0) {
@@ -163,11 +179,11 @@ const radarOption = computed<EChartsOption>(() => {
             symbol: 'pin',
             symbolSize: 36,
             itemStyle: {
-              color: radarColors[idx % radarColors.length],
+              color: cityColor,
               borderColor: '#1A1A2E',
               borderWidth: 2,
               shadowBlur: 8,
-              shadowColor: radarColors[idx % radarColors.length]
+              shadowColor: cityColor
             },
             label: { show: true, color: '#fff', fontSize: 10, formatter: '📝' },
             emphasis: {
@@ -191,14 +207,14 @@ const radarOption = computed<EChartsOption>(() => {
           value: [c.baijiu, c.beer, c.craftBeer, c.wine, c.huangjiu, c.whiskey],
           lineStyle: {
             width: hasAnyAnnotation ? 3 : 2,
-            color: radarColors[idx % radarColors.length]
+            color: cityColor
           },
           areaStyle: {
             color: hasAnyAnnotation
-              ? `${radarColors[idx % radarColors.length]}44`
-              : `${radarColors[idx % radarColors.length]}22`
+              ? `${cityColor}44`
+              : `${cityColor}22`
           },
-          itemStyle: { color: radarColors[idx % radarColors.length] }
+          itemStyle: { color: cityColor }
         }
       ],
       markPoint: markPointData.length > 0 ? {
@@ -260,7 +276,7 @@ const radarOption = computed<EChartsOption>(() => {
       itemGap: 12,
       bottom: 0
     },
-    color: radarColors,
+    color: cities.map(c => getCityColor(c.city)),
     radar: {
       indicator: radarDimensions,
       center: ['50%', '50%'],
