@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
-import { PieChart, LineChart } from 'echarts/charts'
+import { PieChart, LineChart, BarChart } from 'echarts/charts'
 import {
   TitleComponent,
   TooltipComponent,
@@ -13,18 +13,21 @@ import {
 } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import type { EChartsOption } from 'echarts'
-import { TrendingUp, PieChart as PieChartIcon, Activity } from 'lucide-vue-next'
+import { NButtonGroup, NButton, NTooltip } from 'naive-ui'
+import { TrendingUp, PieChart as PieChartIcon, Activity, BarChart3, LayoutGrid, Layers } from 'lucide-vue-next'
 import { useDashboardStore } from '@/stores/dashboard'
 import { baseTooltip, baseLegend, baseGrid, darkAxisStyle } from '@/utils/chartOptions'
 import { useAnnotations } from '@/composables/useAnnotations'
+import { useViewPreference } from '@/composables/useViewPreference'
 import AnnotationTags from '@/components/layout/AnnotationTags.vue'
 import AnnotationDialog from '@/components/layout/AnnotationDialog.vue'
-import type { AnnotationPoint } from '@/types'
+import type { AnnotationPoint, CategoryViewType } from '@/types'
 
-use([PieChart, LineChart, TitleComponent, TooltipComponent, LegendComponent, GridComponent, CanvasRenderer, MarkPointComponent, GraphicComponent])
+use([PieChart, LineChart, BarChart, TitleComponent, TooltipComponent, LegendComponent, GridComponent, CanvasRenderer, MarkPointComponent, GraphicComponent])
 
 const store = useDashboardStore()
 const annotations = useAnnotations()
+const { currentView, setView, getViewOptions } = useViewPreference('category')
 
 const showDialog = ref(false)
 const dialogPayload = ref({
@@ -77,6 +80,12 @@ function onPieClick(params: any) {
   }
 }
 
+function onBarClick(params: any) {
+  if (params && params.name && typeof params.value === 'number') {
+    openPieAnnotation(params.name, params.value)
+  }
+}
+
 function onLineClick(params: any) {
   if (params && params.seriesName && params.name && typeof params.value === 'number') {
     openLineAnnotation(params.seriesName, String(params.name), params.value)
@@ -113,19 +122,27 @@ function handleTagEdit(item: AnnotationPoint) {
   showDialog.value = true
 }
 
-const pieOption = computed<EChartsOption>(() => {
+const shareData = computed(() => {
   const raw = store.filteredCategories
   const total = raw.reduce((s, c) => s + c.share, 0) || 1
-  const data = raw.map(c => {
-    const ann = annotations.getAnnotation('category', c.name, '市场份额')
+  return raw.map(c => ({
+    name: c.name,
+    value: Number(((c.share / total) * 100).toFixed(1)),
+    color: c.color
+  }))
+})
+
+const pieOption = computed<EChartsOption>(() => {
+  const data = shareData.value.map(s => {
+    const ann = annotations.getAnnotation('category', s.name, '市场份额')
     return {
-      name: c.name,
-      value: Number(((c.share / total) * 100).toFixed(1)),
+      name: s.name,
+      value: s.value,
       itemStyle: ann ? {
-        borderColor: c.color,
+        borderColor: s.color,
         borderWidth: 3,
         shadowBlur: 14,
-        shadowColor: c.color
+        shadowColor: s.color
       } : undefined
     }
   })
@@ -157,7 +174,9 @@ const pieOption = computed<EChartsOption>(() => {
       itemWidth: 12,
       itemHeight: 12
     },
-    color: ['#8B0000', '#F4A460', '#B22222', '#DAA520', '#FF69B4', '#CD853F'],
+    color: shareData.value.map(s => s.color),
+    animationDuration: 800,
+    animationEasing: 'cubicOut' as const,
     series: [
       {
         name: '品类占比',
@@ -188,6 +207,107 @@ const pieOption = computed<EChartsOption>(() => {
           }
         },
         data
+      }
+    ]
+  }
+})
+
+const barOption = computed<EChartsOption>(() => {
+  const data = shareData.value.map(s => {
+    const ann = annotations.getAnnotation('category', s.name, '市场份额')
+    return {
+      value: s.value,
+      itemStyle: ann ? {
+        borderColor: s.color,
+        borderWidth: 2,
+        shadowBlur: 14,
+        shadowColor: s.color
+      } : undefined
+    }
+  })
+
+  const markPointData: any[] = []
+  shareData.value.forEach((s, i) => {
+    const ann = annotations.getAnnotation('category', s.name, '市场份额')
+    if (ann) {
+      markPointData.push({
+        name: ann.content,
+        coord: [s.name, s.value],
+        value: '📝',
+        symbol: 'pin',
+        symbolSize: 34,
+        itemStyle: {
+          color: s.color,
+          borderColor: '#1A1A2E',
+          borderWidth: 2,
+          shadowBlur: 8,
+          shadowColor: s.color
+        },
+        label: { show: true, color: '#fff', fontSize: 10, formatter: '📝' }
+      })
+    }
+  })
+
+  return {
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: 'rgba(15, 15, 26, 0.95)',
+      borderColor: '#D4AF37',
+      borderWidth: 1,
+      textStyle: { color: '#fff', fontSize: 13 },
+      formatter: (params: any) => {
+        const p = Array.isArray(params) ? params[0] : params
+        const ann = annotations.getAnnotation('category', p.name, '市场份额')
+        let html = `<div><b>${p.name}</b>：<span style="color:#D4AF37">${p.value}%</span></div>`
+        if (ann) {
+          html += `<div style="margin-top:6px;padding:4px 6px;background:${ann.color}22;border-left:2px solid ${ann.color};border-radius:3px;font-size:12px;color:#e5e5ea">
+            📝 ${ann.content}
+          </div>`
+        }
+        html += `<div style="margin-top:6px;font-size:11px;color:#888;border-top:1px solid #333;padding-top:4px">💡 点击柱子可添加标注</div>`
+        return html
+      }
+    },
+    legend: { ...baseLegend, show: false },
+    grid: baseGrid,
+    xAxis: {
+      type: 'category',
+      data: shareData.value.map(s => s.name),
+      ...darkAxisStyle,
+      axisLabel: { ...darkAxisStyle.axisLabel, fontWeight: 500, fontSize: 11, rotate: 0 }
+    },
+    yAxis: {
+      type: 'value',
+      ...darkAxisStyle,
+      axisLabel: { ...darkAxisStyle.axisLabel, formatter: '{value}%' }
+    },
+    color: shareData.value.map(s => s.color),
+    animationDuration: 800,
+    animationEasing: 'elasticOut' as const,
+    animationDelay: (idx: number) => idx * 60,
+    series: [
+      {
+        type: 'bar' as const,
+        barMaxWidth: 40,
+        itemStyle: {
+          borderRadius: [4, 4, 0, 0] as [number, number, number, number]
+        },
+        emphasis: {
+          itemStyle: {
+            shadowBlur: 12,
+            shadowOffsetY: -4,
+            shadowColor: 'rgba(212, 175, 55, 0.4)'
+          }
+        },
+        data,
+        markPoint: markPointData.length > 0 ? {
+          symbol: 'circle',
+          symbolSize: 12,
+          label: { show: true, fontSize: 10, fontWeight: 700 },
+          data: markPointData,
+          animation: true,
+          animationDuration: 500
+        } : undefined
       }
     ]
   }
@@ -276,6 +396,9 @@ const lineOption = computed<EChartsOption>(() => {
       lineStyle: { width: 2 },
       itemStyle: { color: c.color },
       data: c.growth,
+      animationDuration: 800,
+      animationEasing: 'cubicOut' as const,
+      animationDelay: (idx: number) => idx * 40,
       markPoint: markPointData.length > 0 ? {
         symbol: 'circle',
         symbolSize: 14,
@@ -328,9 +451,175 @@ const lineOption = computed<EChartsOption>(() => {
       axisLine: darkAxisStyle.axisLine,
       splitLine: darkAxisStyle.splitLine
     },
+    animationDuration: 800,
     series
   }
 })
+
+const areaOption = computed<EChartsOption>(() => {
+  const years = store.filteredYears.length > 0 ? store.filteredYears : store.years
+  const highlightMarks = store.anomalySettings.highlightMarks
+
+  const series = store.filteredCategories.map(c => {
+    const catAnomalies = highlightMarks ? store.getCategoryAnomaliesByName(c.name) : []
+    const markPointData: any[] = []
+    catAnomalies.forEach(a => {
+      const idx = years.indexOf(a.timePoint)
+      if (idx >= 0) {
+        markPointData.push({
+          name: `${a.message}`,
+          coord: [a.timePoint, a.current],
+          value: a.changePct > 0 ? `+${a.changePct.toFixed(0)}%` : `${a.changePct.toFixed(0)}%`,
+          symbol: 'circle',
+          symbolSize: a.severity === 'critical' ? 22 : 16,
+          itemStyle: {
+            color: a.severity === 'critical' ? '#ef4444' : '#f59e0b',
+            borderColor: '#1A1A2E',
+            borderWidth: 2,
+            shadowBlur: a.severity === 'critical' ? 12 : 6,
+            shadowColor: a.severity === 'critical' ? 'rgba(239,68,68,0.8)' : 'rgba(245,158,11,0.7)'
+          },
+          label: {
+            show: true,
+            position: 'top',
+            distance: 4,
+            color: a.severity === 'critical' ? '#fca5a5' : '#fcd34d',
+            fontSize: 10,
+            fontWeight: 700,
+            formatter: a.changePct > 0 ? `+${a.changePct.toFixed(0)}%!` : `${a.changePct.toFixed(0)}%!`
+          },
+          emphasis: {
+            itemStyle: {
+              shadowBlur: a.severity === 'critical' ? 20 : 12,
+              shadowColor: a.severity === 'critical' ? '#ef4444' : '#f59e0b'
+            }
+          }
+        })
+      }
+    })
+
+    years.forEach((y, yi) => {
+      const ann = annotations.getAnnotation('category', c.name, '增速', y)
+      if (ann) {
+        const value = c.growth[yi]
+        if (value !== undefined) {
+          markPointData.push({
+            name: ann.content,
+            coord: [y, value],
+            value: '📝',
+            symbol: 'pin',
+            symbolSize: 38,
+            itemStyle: {
+              color: c.color,
+              borderColor: '#1A1A2E',
+              borderWidth: 2,
+              shadowBlur: 10,
+              shadowColor: c.color
+            },
+            label: {
+              show: true,
+              color: '#fff',
+              fontSize: 10,
+              formatter: '📝'
+            },
+            emphasis: {
+              label: { show: true, formatter: ann.content, fontSize: 12, width: 160, overflow: 'break' }
+            }
+          })
+        }
+      }
+    })
+
+    return {
+      name: c.name,
+      type: 'line' as const,
+      smooth: true,
+      stack: 'total',
+      symbol: 'circle',
+      symbolSize: 6,
+      lineStyle: { width: 2, color: c.color },
+      itemStyle: { color: c.color },
+      areaStyle: {
+        color: {
+          type: 'linear' as const,
+          x: 0, y: 0, x2: 0, y2: 1,
+          colorStops: [
+            { offset: 0, color: `${c.color}88` },
+            { offset: 1, color: `${c.color}10` }
+          ]
+        }
+      },
+      data: c.growth,
+      animationDuration: 800,
+      animationEasing: 'cubicOut' as const,
+      animationDelay: (idx: number) => idx * 40,
+      markPoint: markPointData.length > 0 ? {
+        symbol: 'circle',
+        symbolSize: 14,
+        label: { show: true, fontSize: 10, fontWeight: 700 },
+        data: markPointData,
+        animation: true,
+        animationDuration: 500
+      } : undefined
+    }
+  })
+
+  return {
+    tooltip: {
+      ...baseTooltip,
+      formatter: (params: any) => {
+        const list = Array.isArray(params) ? params : [params]
+        let html = `<div style="font-weight:bold;margin-bottom:6px;color:#D4AF37">${list[0]?.axisValue || ''}</div>`
+        list.forEach((p: any) => {
+          const ann = annotations.getAnnotation('category', p.seriesName, '增速', list[0]?.axisValue)
+          html += `<div style="display:flex;align-items:center;gap:6px;margin:3px 0">
+            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${p.color}"></span>
+            <span>${p.seriesName}：<b>${p.value}%</b></span>
+          </div>`
+          if (p.marker && p.data && typeof p.data === 'object' && p.data.value && String(p.data.value).includes('%')) {
+            html += `<div style="font-size:11px;color:${String(p.data.value).startsWith('+') ? '#fca5a5' : '#fcd34d'};margin-left:14px">
+              ⚠ ${p.data.value} 异常波动
+            </div>`
+          }
+          if (ann) {
+            html += `<div style="margin:4px 0 4px 14px;padding:3px 6px;background:${ann.color}22;border-left:2px solid ${ann.color};border-radius:3px;font-size:11px;color:#e5e5ea">
+              📝 ${ann.content}
+            </div>`
+          }
+        })
+        html += `<div style="margin-top:6px;font-size:11px;color:#888;border-top:1px solid #333;padding-top:4px">💡 点击数据点可添加标注</div>`
+        return html
+      }
+    },
+    legend: { ...baseLegend, top: 0 },
+    grid: baseGrid,
+    xAxis: {
+      type: 'category',
+      boundaryGap: false,
+      data: years,
+      ...darkAxisStyle
+    },
+    yAxis: {
+      type: 'value',
+      axisLabel: { ...darkAxisStyle.axisLabel, formatter: '{value}%' },
+      axisLine: darkAxisStyle.axisLine,
+      splitLine: darkAxisStyle.splitLine
+    },
+    animationDuration: 800,
+    series
+  }
+})
+
+const viewOptions = computed(() => getViewOptions())
+
+function isView(v: string): v is CategoryViewType {
+  return v === 'pie-line' || v === 'bar-area'
+}
+
+const leftOption = computed(() => (isView(currentView.value) && currentView.value === 'pie-line' ? pieOption : barOption).value)
+const rightOption = computed(() => (isView(currentView.value) && currentView.value === 'pie-line' ? lineOption : areaOption).value)
+const leftClick = computed(() => isView(currentView.value) && currentView.value === 'pie-line' ? onPieClick : onBarClick)
+const rightClick = computed(() => onLineClick)
 
 const highlightMetrics = computed(() => [
   {
@@ -359,23 +648,49 @@ const highlightMetrics = computed(() => [
 
 <template>
   <div class="card-glass rounded-xl p-6 h-full flex flex-col">
-    <h2 class="text-xl font-serif-cn font-bold text-gradient-gold mb-5">品类结构分析</h2>
+    <div class="flex items-center justify-between mb-5">
+      <h2 class="text-xl font-serif-cn font-bold text-gradient-gold">品类结构分析</h2>
+
+      <NTooltip trigger="hover">
+        <template #trigger>
+          <NButtonGroup size="small" class="!rounded-lg overflow-hidden">
+            <NButton
+              v-for="opt in viewOptions"
+              :key="opt.value"
+              :quaternary="currentView !== opt.value"
+              :type="currentView === opt.value ? 'primary' : 'default'"
+              class="!px-3"
+              @click="setView(opt.value as CategoryViewType)"
+            >
+              <component
+                :is="opt.value === 'pie-line' ? Layers : LayoutGrid"
+                class="w-3.5 h-3.5 mr-1.5"
+              />
+              {{ opt.label }}
+            </NButton>
+          </NButtonGroup>
+        </template>
+        切换图表类型，数据不变
+      </NTooltip>
+    </div>
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5 flex-1 min-h-0">
       <div class="bg-ink-900/40 rounded-lg p-3 min-h-[280px]">
         <VChart
           class="w-full h-full"
-          :option="pieOption"
+          :option="leftOption"
           autoresize
-          @click="onPieClick"
+          :key="'left-' + currentView"
+          @click="leftClick"
         />
       </div>
       <div class="bg-ink-900/40 rounded-lg p-3 min-h-[280px]">
         <VChart
           class="w-full h-full"
-          :option="lineOption"
+          :option="rightOption"
           autoresize
-          @click="onLineClick"
+          :key="'right-' + currentView"
+          @click="rightClick"
         />
       </div>
     </div>

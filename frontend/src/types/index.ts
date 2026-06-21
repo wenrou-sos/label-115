@@ -128,6 +128,16 @@ export interface AnomalySettings {
 
 export type AnnotationModule = 'category' | 'region' | 'price' | 'import' | 'age' | 'festival'
 
+export type CategoryViewType = 'pie-line' | 'bar-area'
+export type AgeViewType = 'bar' | 'heatmap' | 'radar'
+export type FestivalViewType = 'bar' | 'radar' | 'area'
+export type ViewPreferenceMap = {
+  category: CategoryViewType
+  age: AgeViewType
+  festival: FestivalViewType
+}
+export type ViewPreferenceModule = keyof ViewPreferenceMap
+
 export interface AnnotationPoint {
   id: string
   module: AnnotationModule
