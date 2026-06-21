@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import type {
   OverviewData,
   CategoryData,
@@ -10,7 +10,88 @@ import type {
   ImportCompareData,
   DashboardFilters
 } from '@/types'
+type MessageApi = {
+  success: (msg: string) => void
+  error: (msg: string) => void
+  warning: (msg: string) => void
+  info: (msg: string) => void
+}
+import type { RouteLocationNormalizedLoaded, Router } from 'vue-router'
 import { api } from '@/api'
+
+const STORAGE_KEY = 'liquor-dashboard-filters'
+export const DEFAULT_FILTERS: DashboardFilters = {
+  yearRange: [2021, 2025],
+  selectedCategories: [],
+  selectedRegion: 'all'
+}
+
+export function buildFilterQuery(filters: DashboardFilters): Record<string, string> {
+  const params: Record<string, string> = {}
+  const { yearRange, selectedCategories, selectedRegion } = filters
+
+  if (selectedRegion && selectedRegion !== 'all') {
+    params.region = selectedRegion
+  }
+  if (selectedCategories.length > 0) {
+    params.categories = selectedCategories.join(',')
+  }
+  if (yearRange[0] !== DEFAULT_FILTERS.yearRange[0] || yearRange[1] !== DEFAULT_FILTERS.yearRange[1]) {
+    params.year = `${yearRange[0]}-${yearRange[1]}`
+  }
+
+  return params
+}
+
+export function parseFilterQuery(query: Record<string, any>, filters: DashboardFilters): boolean {
+  let hasChanges = false
+
+  if (query.region && typeof query.region === 'string') {
+    filters.selectedRegion = query.region
+    hasChanges = true
+  }
+  if (query.categories && typeof query.categories === 'string') {
+    filters.selectedCategories = query.categories.split(',').filter(Boolean)
+    hasChanges = true
+  }
+  if (query.year && typeof query.year === 'string') {
+    const match = query.year.match(/(\d{4})-(\d{4})/)
+    if (match) {
+      filters.yearRange = [parseInt(match[1]), parseInt(match[2])]
+      hasChanges = true
+    }
+  }
+
+  return hasChanges
+}
+
+export function buildShareUrl(filters: DashboardFilters, path: string): string {
+  const params = new URLSearchParams()
+  const query = buildFilterQuery(filters)
+  Object.keys(query).forEach(k => params.set(k, query[k]))
+  const baseUrl = `${window.location.origin}${path}`
+  const queryStr = params.toString()
+  return queryStr ? `${baseUrl}?${queryStr}` : baseUrl
+}
+
+export async function copyShareUrl(url: string, message: MessageApi) {
+  try {
+    await navigator.clipboard.writeText(url)
+    message.success('分享链接已复制到剪贴板')
+  } catch (e) {
+    try {
+      const ta = document.createElement('textarea')
+      ta.value = url
+      document.body.appendChild(ta)
+      ta.select()
+      document.execCommand('copy')
+      document.body.removeChild(ta)
+      message.success('分享链接已复制到剪贴板')
+    } catch (e2) {
+      message.error('复制失败，请手动复制：' + url)
+    }
+  }
+}
 
 export const useDashboardStore = defineStore('dashboard', () => {
   const loading = ref(false)
@@ -26,11 +107,71 @@ export const useDashboardStore = defineStore('dashboard', () => {
   const festivals = ref<FestivalData[]>([])
   const importCompare = ref<ImportCompareData[]>([])
 
-  const filters = ref<DashboardFilters>({
-    yearRange: [2021, 2025],
-    selectedCategories: [],
-    selectedRegion: 'all'
-  })
+  const filters = ref<DashboardFilters>({ ...DEFAULT_FILTERS })
+
+  function saveFiltersToStorage() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(filters.value))
+    } catch (e) {
+      console.warn('Failed to save filters to localStorage', e)
+    }
+  }
+
+  function loadFiltersFromStorage() {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY)
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        filters.value = { ...DEFAULT_FILTERS, ...parsed }
+        return true
+      }
+    } catch (e) {
+      console.warn('Failed to load filters from localStorage', e)
+    }
+    return false
+  }
+
+  let isSyncing = false
+  let routerRef: Router | null = null
+  let routeRef: RouteLocationNormalizedLoaded | null = null
+
+  watch(filters, () => {
+    if (isSyncing) return
+    saveFiltersToStorage()
+    if (routerRef && routeRef) {
+      const query = buildFilterQuery(filters.value)
+      routerRef.replace({ path: routeRef.path, query }).catch(() => {})
+    }
+  }, { deep: true })
+
+  function setRouter(router: Router, route: RouteLocationNormalizedLoaded) {
+    routerRef = router
+    routeRef = route
+  }
+
+  function initFilters(route: RouteLocationNormalizedLoaded) {
+    isSyncing = true
+    try {
+      const fromUrl = parseFilterQuery(route.query as Record<string, any>, filters.value)
+      if (!fromUrl) {
+        loadFiltersFromStorage()
+      } else {
+        saveFiltersToStorage()
+      }
+    } finally {
+      setTimeout(() => {
+        isSyncing = false
+        if (routerRef && routeRef) {
+          const query = buildFilterQuery(filters.value)
+          routerRef.replace({ path: routeRef.path, query }).catch(() => {})
+        }
+      }, 100)
+    }
+  }
+
+  function getShareUrl(path: string): string {
+    return buildShareUrl(filters.value, path)
+  }
 
   const filteredYears = computed(() => {
     const [start, end] = filters.value.yearRange
@@ -247,6 +388,11 @@ export const useDashboardStore = defineStore('dashboard', () => {
     fetchAll,
     setRegion,
     setCategories,
-    setYearRange
+    setYearRange,
+    initFilters,
+    setRouter,
+    getShareUrl,
+    saveFiltersToStorage,
+    loadFiltersFromStorage
   }
 })

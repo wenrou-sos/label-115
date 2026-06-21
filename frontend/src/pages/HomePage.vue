@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, computed } from 'vue'
 import { storeToRefs } from 'pinia'
+import { useRoute, useRouter } from 'vue-router'
 import { useLoadingBar, NSpin } from 'naive-ui'
 import {
   TrendingUp,
@@ -26,9 +27,13 @@ import ImportModule from '@/components/modules/ImportModule.vue'
 const store = useDashboardStore()
 const { loading, overview, error, showPriceModule } = storeToRefs(store)
 const loadingBar = useLoadingBar()
+const route = useRoute()
+const router = useRouter()
 
 onMounted(async () => {
   loadingBar.start()
+  store.setRouter(router, route)
+  store.initFilters(route)
   await store.fetchAll()
   if (error.value) {
     loadingBar.error()

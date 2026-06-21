@@ -1,17 +1,25 @@
 <script setup lang="ts">
-import { Wine, RefreshCw, TrendingUp, Calendar } from 'lucide-vue-next'
-import { NButton, NSpace, useLoadingBar } from 'naive-ui'
-import { useDashboardStore } from '@/stores/dashboard'
+import { Wine, RefreshCw, TrendingUp, Calendar, Share2 } from 'lucide-vue-next'
+import { NButton, NSpace, useLoadingBar, useMessage } from 'naive-ui'
+import { useRoute } from 'vue-router'
+import { useDashboardStore, copyShareUrl } from '@/stores/dashboard'
 import { storeToRefs } from 'pinia'
 
 const store = useDashboardStore()
 const { loading, overview } = storeToRefs(store)
 const loadingBar = useLoadingBar()
+const message = useMessage()
+const route = useRoute()
 
 async function handleRefresh() {
   loadingBar.start()
   await store.fetchAll()
   loadingBar.finish()
+}
+
+function handleShare() {
+  const url = store.getShareUrl(route.path)
+  copyShareUrl(url, message)
 }
 </script>
 
@@ -45,6 +53,17 @@ async function handleRefresh() {
             <Calendar class="w-4 h-4 text-champagne-500/70" />
             <span>数据更新: 2025年Q4</span>
           </div>
+          <NButton
+            size="medium"
+            quaternary
+            @click="handleShare"
+            class="!border !border-ink-600/60 hover:!border-champagne-500/60"
+          >
+            <template #icon>
+              <Share2 class="w-4 h-4 text-champagne-400" />
+            </template>
+            <span class="text-champagne-300">复制分享链接</span>
+          </NButton>
           <NButton
             type="primary"
             size="medium"
