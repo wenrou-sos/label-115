@@ -276,18 +276,96 @@ export const useDashboardStore = defineStore('dashboard', () => {
     return result
   }
 
+  function makeCrossSectionalAnomaly(
+    id: string,
+    module: string,
+    moduleLabel: string,
+    metric: string,
+    entity: string,
+    index: number,
+    groupLabel: string,
+    baseline: number,
+    current: number,
+    threshold: number
+  ): AnomalyPoint | null {
+    const denom = Math.abs(baseline) < 1e-9 ? 1e-9 : Math.abs(baseline)
+    const deviationPct = ((current - baseline) / denom) * 100
+    if (Math.abs(deviationPct) < threshold) return null
+    const direction = deviationPct > 0 ? '偏高' : '偏低'
+    const severity: AnomalySeverity = Math.abs(deviationPct) >= threshold * 2 ? 'critical' : 'warning'
+    const message = `${entity}·${metric} 较区域均值${direction} ${deviationPct.toFixed(1)}%，超过阈值 ${threshold}%`
+    return {
+      id,
+      module,
+      moduleLabel,
+      metric,
+      entity,
+      index,
+      timePoint: groupLabel,
+      previous: baseline,
+      current,
+      changePct: deviationPct,
+      threshold,
+      severity,
+      message
+    }
+  }
+
+  function detectCrossSectionalAnomalies(
+    cities: CityData[],
+    threshold: number
+  ): AnomalyPoint[] {
+    const result: AnomalyPoint[] = []
+    if (!cities || cities.length < 2) return result
+
+    const metrics = [
+      { key: 'baijiu', label: '白酒占比' },
+      { key: 'beer', label: '啤酒占比' },
+      { key: 'craftBeer', label: '精酿啤酒占比' },
+      { key: 'wine', label: '红酒占比' },
+      { key: 'huangjiu', label: '黄酒占比' },
+      { key: 'whiskey', label: '威士忌占比' },
+      { key: 'craftIndex', label: '精酿指数' }
+    ] as const
+
+    metrics.forEach(metric => {
+      const values = cities.map(c => (c as any)[metric.key] as number)
+      const mean = values.reduce((a, b) => a + b, 0) / values.length
+
+      cities.forEach((city, ci) => {
+        const value = (city as any)[metric.key] as number
+        const anomaly = makeCrossSectionalAnomaly(
+          `region-${metric.key}-${ci}`,
+          'region',
+          '区域消费偏好',
+          metric.label,
+          city.city,
+          ci,
+          city.region,
+          mean,
+          value,
+          threshold
+        )
+        if (anomaly) result.push(anomaly)
+      })
+    })
+
+    return result
+  }
+
   function runAnomalyDetection() {
     anomalies.value = []
     if (!anomalySettings.value.enabled) return
     const threshold = anomalySettings.value.thresholdPct
     const list: AnomalyPoint[] = []
+    const yearList = filteredYears.value.length > 0 ? filteredYears.value : years.value
 
-    // 1. 品类增速
-    categories.value.forEach((c, ci) => {
+    // 1. 品类增速（使用筛选后数据）
+    filteredCategories.value.forEach((c, ci) => {
       list.push(
         ...detectTimeSeriesAnomalies(
           c.growth,
-          years.value,
+          yearList,
           'category',
           '品类结构',
           '增速',
@@ -298,23 +376,25 @@ export const useDashboardStore = defineStore('dashboard', () => {
       )
     })
 
-    // 2. 价格带份额趋势
-    priceRanges.value.forEach((p, pi) => {
-      list.push(
-        ...detectTimeSeriesAnomalies(
-          p.trend,
-          years.value,
-          'price',
-          '白酒价格带',
-          '份额',
-          p.range,
-          threshold,
-          `price-trend-${pi}`
+    // 2. 价格带份额趋势（使用筛选后数据）
+    if (showPriceModule.value) {
+      filteredPriceRanges.value.forEach((p, pi) => {
+        list.push(
+          ...detectTimeSeriesAnomalies(
+            p.trend,
+            yearList,
+            'price',
+            '白酒价格带',
+            '份额',
+            p.range,
+            threshold,
+            `price-trend-${pi}`
+          )
         )
-      )
-    })
+      })
+    }
 
-    // 3. 进口/国产对比（按年的 4 个指标）
+    // 3. 进口/国产对比（使用筛选后数据）
     const importMetrics = [
       { key: 'importWineShare', label: '进口红酒份额' },
       { key: 'domesticWineShare', label: '国产红酒份额' },
@@ -323,8 +403,8 @@ export const useDashboardStore = defineStore('dashboard', () => {
       { key: 'tariffRate', label: '关税率' }
     ] as const
     importMetrics.forEach(metric => {
-      const series = importCompare.value.map(row => (row as any)[metric.key] as number)
-      const timePoints = importCompare.value.map(row => row.year)
+      const series = filteredImportCompare.value.map(row => (row as any)[metric.key] as number)
+      const timePoints = filteredImportCompare.value.map(row => row.year)
       list.push(
         ...detectTimeSeriesAnomalies(
           series,
@@ -338,6 +418,11 @@ export const useDashboardStore = defineStore('dashboard', () => {
         )
       )
     })
+
+    // 4. 区域消费偏好（截面数据偏离均值检测）
+    list.push(
+      ...detectCrossSectionalAnomalies(filteredCities.value, threshold)
+    )
 
     anomalies.value = list
   }
@@ -376,6 +461,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
       const query = buildFilterQuery(filters.value)
       routerRef.replace({ path: routeRef.path, query }).catch(() => {})
     }
+    runAnomalyDetection()
   }, { deep: true })
 
   function setRouter(router: Router, route: RouteLocationNormalizedLoaded) {
@@ -417,6 +503,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
   const categoryGrowthAnomalies = computed(() => anomalies.value.filter(a => a.module === 'category'))
   const priceTrendAnomalies = computed(() => anomalies.value.filter(a => a.module === 'price'))
   const importCompareAnomalies = computed(() => anomalies.value.filter(a => a.module === 'import'))
+  const regionAnomalies = computed(() => anomalies.value.filter(a => a.module === 'region'))
 
   function getCategoryAnomaliesByName(name: string): AnomalyPoint[] {
     return anomalies.value.filter(a => a.module === 'category' && a.entity === name)
@@ -428,6 +515,14 @@ export const useDashboardStore = defineStore('dashboard', () => {
 
   function getImportAnomaliesByMetric(metric: string): AnomalyPoint[] {
     return anomalies.value.filter(a => a.module === 'import' && a.metric === metric)
+  }
+
+  function getRegionAnomaliesByCity(city: string): AnomalyPoint[] {
+    return anomalies.value.filter(a => a.module === 'region' && a.entity === city)
+  }
+
+  function getRegionAnomaliesByCityAndMetric(city: string, metricKey: string): AnomalyPoint | undefined {
+    return anomalies.value.find(a => a.module === 'region' && a.entity === city && a.metric === metricKey)
   }
 
   const filteredYears = computed(() => {
@@ -586,6 +681,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
     const res = await api.getRegion(filters.value.selectedRegion)
     cities.value = res.data.cities
     regions.value = res.data.regions
+    runAnomalyDetection()
   }
 
   async function fetchPriceRange() {
@@ -641,6 +737,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
     categoryGrowthAnomalies,
     priceTrendAnomalies,
     importCompareAnomalies,
+    regionAnomalies,
     filteredYears,
     filteredCategories,
     filteredCities,
@@ -665,6 +762,8 @@ export const useDashboardStore = defineStore('dashboard', () => {
     setHighlightMarks,
     getCategoryAnomaliesByName,
     getPriceAnomaliesByRange,
-    getImportAnomaliesByMetric
+    getImportAnomaliesByMetric,
+    getRegionAnomaliesByCity,
+    getRegionAnomaliesByCityAndMetric
   }
 })
