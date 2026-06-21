@@ -11,8 +11,12 @@ import type {
   DashboardFilters,
   AnomalyPoint,
   AnomalySettings,
-  AnomalySeverity
+  AnomalySeverity,
+  MetricMeta,
+  CustomMetric,
+  CustomMetricsConfig
 } from '@/types'
+import { METRIC_CATEGORY_LABELS } from '@/types'
 type MessageApi = {
   success: (msg: string) => void
   error: (msg: string) => void
@@ -24,6 +28,7 @@ import { api } from '@/api'
 
 const STORAGE_KEY = 'liquor-dashboard-filters'
 const STORAGE_ANOMALY_KEY = 'liquor-dashboard-anomaly-settings'
+const STORAGE_CUSTOM_METRICS_KEY = 'liquor-dashboard-custom-metrics'
 export const DEFAULT_FILTERS: DashboardFilters = {
   yearRange: [2021, 2025],
   selectedCategories: [],
@@ -35,6 +40,65 @@ export const DEFAULT_ANOMALY_SETTINGS: AnomalySettings = {
   thresholdPct: 15,
   highlightMarks: true
 }
+
+export const DEFAULT_CUSTOM_METRICS: CustomMetricsConfig = {
+  enabled: false,
+  metrics: []
+}
+
+export const AVAILABLE_METRICS: MetricMeta[] = [
+  { id: 'overview_totalMarket', name: '总市场规模', category: 'overview', categoryLabel: METRIC_CATEGORY_LABELS.overview, unit: '万亿元', color: 'wine', description: '全品类年度市场总规模' },
+  { id: 'overview_totalGrowth', name: '整体增速', category: 'overview', categoryLabel: METRIC_CATEGORY_LABELS.overview, unit: '%', color: 'green', description: '市场整体同比增长率' },
+  { id: 'overview_categoryCount', name: '品类覆盖数', category: 'overview', categoryLabel: METRIC_CATEGORY_LABELS.overview, unit: '大品类', color: 'gold', description: '统计涵盖的酒品类数量' },
+  { id: 'overview_craftBeerIndex', name: '精酿消费指数', category: 'overview', categoryLabel: METRIC_CATEGORY_LABELS.overview, color: 'green', description: '精酿啤酒综合消费热度指数' },
+
+  { id: 'category_baijiu_share', name: '白酒份额', category: 'category', categoryLabel: METRIC_CATEGORY_LABELS.category, unit: '%', color: 'wine', description: '白酒市场份额占比' },
+  { id: 'category_beer_share', name: '啤酒份额', category: 'category', categoryLabel: METRIC_CATEGORY_LABELS.category, unit: '%', color: 'gold', description: '啤酒市场份额占比' },
+  { id: 'category_wine_share', name: '红酒份额', category: 'category', categoryLabel: METRIC_CATEGORY_LABELS.category, unit: '%', color: 'wine', description: '红酒市场份额占比' },
+  { id: 'category_huangjiu_share', name: '黄酒份额', category: 'category', categoryLabel: METRIC_CATEGORY_LABELS.category, unit: '%', color: 'gold', description: '黄酒市场份额占比' },
+  { id: 'category_craftBeer_share', name: '精酿啤酒份额', category: 'category', categoryLabel: METRIC_CATEGORY_LABELS.category, unit: '%', color: 'green', description: '精酿啤酒市场份额占比' },
+  { id: 'category_whiskey_share', name: '威士忌份额', category: 'category', categoryLabel: METRIC_CATEGORY_LABELS.category, unit: '%', color: 'gold', description: '威士忌市场份额占比' },
+
+  { id: 'category_baijiu_growth', name: '白酒增速', category: 'category', categoryLabel: METRIC_CATEGORY_LABELS.category, unit: '%', color: 'green', description: '白酒最近一年增速' },
+  { id: 'category_beer_growth', name: '啤酒增速', category: 'category', categoryLabel: METRIC_CATEGORY_LABELS.category, unit: '%', color: 'green', description: '啤酒最近一年增速' },
+  { id: 'category_wine_growth', name: '红酒增速', category: 'category', categoryLabel: METRIC_CATEGORY_LABELS.category, unit: '%', color: 'green', description: '红酒最近一年增速' },
+  { id: 'category_craftBeer_growth', name: '精酿啤酒增速', category: 'category', categoryLabel: METRIC_CATEGORY_LABELS.category, unit: '%', color: 'green', description: '精酿啤酒最近一年增速' },
+  { id: 'category_whiskey_growth', name: '威士忌增速', category: 'category', categoryLabel: METRIC_CATEGORY_LABELS.category, unit: '%', color: 'green', description: '威士忌最近一年增速' },
+
+  { id: 'region_avgCraftIndex', name: '区域平均精酿指数', category: 'region', categoryLabel: METRIC_CATEGORY_LABELS.region, color: 'gold', description: '所选区域城市的精酿指数平均值' },
+  { id: 'region_topCraftCity', name: '精酿指数最高城市', category: 'region', categoryLabel: METRIC_CATEGORY_LABELS.region, color: 'green', description: '精酿消费指数最高的城市' },
+  { id: 'region_cityCount', name: '覆盖城市数', category: 'region', categoryLabel: METRIC_CATEGORY_LABELS.region, unit: '个', color: 'blue', description: '当前筛选条件下的城市数量' },
+
+  { id: 'age_18-25_baijiu', name: '18-25岁白酒占比', category: 'age', categoryLabel: METRIC_CATEGORY_LABELS.age, unit: '%', color: 'wine', description: '18-25岁人群白酒消费占比' },
+  { id: 'age_26-30_baijiu', name: '26-30岁白酒占比', category: 'age', categoryLabel: METRIC_CATEGORY_LABELS.age, unit: '%', color: 'wine', description: '26-30岁人群白酒消费占比' },
+  { id: 'age_31-40_baijiu', name: '31-40岁白酒占比', category: 'age', categoryLabel: METRIC_CATEGORY_LABELS.age, unit: '%', color: 'wine', description: '31-40岁人群白酒消费占比' },
+  { id: 'age_41-50_baijiu', name: '41-50岁白酒占比', category: 'age', categoryLabel: METRIC_CATEGORY_LABELS.age, unit: '%', color: 'wine', description: '41-50岁人群白酒消费占比' },
+  { id: 'age_51+_baijiu', name: '51岁以上白酒占比', category: 'age', categoryLabel: METRIC_CATEGORY_LABELS.age, unit: '%', color: 'wine', description: '51岁以上人群白酒消费占比' },
+
+  { id: 'age_18-25_craftBeer', name: '18-25岁精酿占比', category: 'age', categoryLabel: METRIC_CATEGORY_LABELS.age, unit: '%', color: 'green', description: '18-25岁人群精酿啤酒消费占比' },
+  { id: 'age_26-30_craftBeer', name: '26-30岁精酿占比', category: 'age', categoryLabel: METRIC_CATEGORY_LABELS.age, unit: '%', color: 'green', description: '26-30岁人群精酿啤酒消费占比' },
+  { id: 'age_31-40_craftBeer', name: '31-40岁精酿占比', category: 'age', categoryLabel: METRIC_CATEGORY_LABELS.age, unit: '%', color: 'green', description: '31-40岁人群精酿啤酒消费占比' },
+
+  { id: 'age_18-25_wine', name: '18-25岁红酒占比', category: 'age', categoryLabel: METRIC_CATEGORY_LABELS.age, unit: '%', color: 'wine', description: '18-25岁人群红酒消费占比' },
+  { id: 'age_26-30_wine', name: '26-30岁红酒占比', category: 'age', categoryLabel: METRIC_CATEGORY_LABELS.age, unit: '%', color: 'wine', description: '26-30岁人群红酒消费占比' },
+
+  { id: 'price_low_share', name: '百元以下酒份额', category: 'price', categoryLabel: METRIC_CATEGORY_LABELS.price, unit: '%', color: 'gold', description: '100元以下价格带份额' },
+  { id: 'price_mid_share', name: '100-300元酒份额', category: 'price', categoryLabel: METRIC_CATEGORY_LABELS.price, unit: '%', color: 'blue', description: '100-300元价格带份额' },
+  { id: 'price_high_share', name: '300-800元酒份额', category: 'price', categoryLabel: METRIC_CATEGORY_LABELS.price, unit: '%', color: 'wine', description: '300-800元价格带份额' },
+  { id: 'price_premium_share', name: '800-2000元酒份额', category: 'price', categoryLabel: METRIC_CATEGORY_LABELS.price, unit: '%', color: 'gold', description: '800-2000元次高端价格带份额' },
+  { id: 'price_luxury_share', name: '2000元以上酒份额', category: 'price', categoryLabel: METRIC_CATEGORY_LABELS.price, unit: '%', color: 'wine', description: '2000元以上高端价格带份额' },
+
+  { id: 'price_low_trend', name: '大众酒趋势', category: 'price', categoryLabel: METRIC_CATEGORY_LABELS.price, unit: '%', color: 'green', description: '百元以下价格带最近一年趋势变化' },
+  { id: 'price_premium_trend', name: '次高端酒趋势', category: 'price', categoryLabel: METRIC_CATEGORY_LABELS.price, unit: '%', color: 'green', description: '800-2000元价格带最近一年趋势变化' },
+  { id: 'price_luxury_trend', name: '高端酒趋势', category: 'price', categoryLabel: METRIC_CATEGORY_LABELS.price, unit: '%', color: 'green', description: '2000元以上价格带最近一年趋势变化' },
+
+  { id: 'festival_springFestival_baijiu', name: '春节白酒销售倍数', category: 'festival', categoryLabel: METRIC_CATEGORY_LABELS.festival, unit: 'x', color: 'wine', description: '春节期间白酒相对平日销售倍数' },
+  { id: 'festival_valentines_wine', name: '情人节红酒销售倍数', category: 'festival', categoryLabel: METRIC_CATEGORY_LABELS.festival, unit: 'x', color: 'wine', description: '情人节期间红酒相对平日销售倍数' },
+  { id: 'festival_midAutumn_highEnd', name: '中秋高端酒占比', category: 'festival', categoryLabel: METRIC_CATEGORY_LABELS.festival, unit: '%', color: 'gold', description: '中秋期间高端酒平均占比' },
+  { id: 'festival_christmas_sparkling', name: '圣诞香槟/起泡酒倍数', category: 'festival', categoryLabel: METRIC_CATEGORY_LABELS.festival, unit: 'x', color: 'gold', description: '圣诞节香槟/起泡酒相对平日销售倍数' },
+  { id: 'festival_newYear_beer', name: '元旦啤酒销售倍数', category: 'festival', categoryLabel: METRIC_CATEGORY_LABELS.festival, unit: 'x', color: 'gold', description: '元旦期间啤酒相对平日销售倍数' },
+  { id: 'festival_qingming_huangjiu', name: '清明黄酒销售倍数', category: 'festival', categoryLabel: METRIC_CATEGORY_LABELS.festival, unit: 'x', color: 'gold', description: '清明节期间黄酒相对平日销售倍数' }
+]
 
 const DEFAULT_VALID_REGIONS = ['华东', '华南', '华北', '华中', '西南', '西北', '东北', '成渝', '沿海']
 const DEFAULT_VALID_CATEGORIES = ['白酒', '红酒', '啤酒', '黄酒', '果酒清酒', '精酿啤酒']
@@ -167,6 +231,225 @@ export const useDashboardStore = defineStore('dashboard', () => {
   const filters = ref<DashboardFilters>({ ...DEFAULT_FILTERS })
   const anomalySettings = ref<AnomalySettings>({ ...DEFAULT_ANOMALY_SETTINGS })
   const anomalies = ref<AnomalyPoint[]>([])
+  const customMetrics = ref<CustomMetricsConfig>({ ...DEFAULT_CUSTOM_METRICS })
+
+  function loadCustomMetrics() {
+    try {
+      const saved = localStorage.getItem(STORAGE_CUSTOM_METRICS_KEY)
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        customMetrics.value = { ...DEFAULT_CUSTOM_METRICS, ...parsed }
+        return true
+      }
+    } catch (e) {
+      console.warn('Failed to load custom metrics', e)
+    }
+    return false
+  }
+
+  function saveCustomMetrics() {
+    try {
+      localStorage.setItem(STORAGE_CUSTOM_METRICS_KEY, JSON.stringify(customMetrics.value))
+    } catch (e) {
+      console.warn('Failed to save custom metrics', e)
+    }
+  }
+
+  function setCustomMetrics(metrics: CustomMetric[]) {
+    customMetrics.value.metrics = [...metrics].sort((a, b) => a.order - b.order)
+    customMetrics.value.enabled = metrics.length > 0
+    saveCustomMetrics()
+  }
+
+  function setCustomMetricsEnabled(enabled: boolean) {
+    customMetrics.value.enabled = enabled
+    saveCustomMetrics()
+  }
+
+  function resetCustomMetrics() {
+    customMetrics.value = { ...DEFAULT_CUSTOM_METRICS }
+    saveCustomMetrics()
+  }
+
+  function getMetricValue(metricId: string): string | number {
+    const parts = metricId.split('_')
+    const category = parts[0]
+
+    try {
+      if (category === 'overview' && overview.value) {
+        const field = parts.slice(1).join('_') as keyof OverviewData
+        const val = overview.value[field]
+        if (typeof val === 'number') {
+          if (metricId === 'overview_totalMarket') return (val / 10000).toFixed(2)
+          if (metricId === 'overview_totalGrowth') return Number(val.toFixed(1))
+          if (metricId === 'overview_craftBeerIndex') return Number(val.toFixed(1))
+          if (metricId === 'overview_categoryCount') return val
+        }
+        if (Array.isArray(val)) {
+          return (val as string[]).join(' · ')
+        }
+        return val ?? '-'
+      }
+
+      if (category === 'category') {
+        const catNameMap: Record<string, string> = {
+          baijiu: '白酒',
+          beer: '啤酒',
+          wine: '红酒',
+          huangjiu: '黄酒',
+          craftBeer: '精酿啤酒',
+          whiskey: '威士忌'
+        }
+        const catKey = parts[1]
+        const field = parts[2]
+        const catName = catNameMap[catKey]
+        const cat = filteredCategories.value.find(c => c.name === catName)
+        if (cat) {
+          if (field === 'share') return Number(cat.share.toFixed(1))
+          if (field === 'growth' && cat.growth.length > 0) {
+            return Number(cat.growth[cat.growth.length - 1].toFixed(1))
+          }
+        }
+        return '-'
+      }
+
+      if (category === 'region') {
+        const cities = filteredCities.value
+        if (parts[1] === 'avgCraftIndex' && cities.length > 0) {
+          const avg = cities.reduce((s, c) => s + c.craftIndex, 0) / cities.length
+          return Number(avg.toFixed(1))
+        }
+        if (parts[1] === 'topCraftCity' && cities.length > 0) {
+          const sorted = [...cities].sort((a, b) => b.craftIndex - a.craftIndex)
+          return sorted[0].city
+        }
+        if (parts[1] === 'cityCount') return cities.length
+        return '-'
+      }
+
+      if (category === 'age') {
+        const ageGroup = parts[1]
+        const catKey = parts[2]
+        const ageMap: Record<string, string> = {
+          '18-25': '18-25岁',
+          '26-30': '26-30岁',
+          '31-40': '31-40岁',
+          '41-50': '41-50岁',
+          '51+': '51岁以上'
+        }
+        const group = filteredAgeGroups.value.find(g => g.ageGroup === ageMap[ageGroup])
+        if (group) {
+          const val = (group as any)[catKey]
+          return typeof val === 'number' ? Number(val.toFixed(1)) : '-'
+        }
+        return '-'
+      }
+
+      if (category === 'price') {
+        const rangeMap: Record<string, string> = {
+          low: '百元以下',
+          mid: '100-300元',
+          high: '300-800元',
+          premium: '800-2000元',
+          luxury: '2000元以上'
+        }
+        const priceKey = parts[1]
+        const field = parts[2]
+        const range = filteredPriceRanges.value.find(p => p.range.includes(rangeMap[priceKey]))
+        if (range) {
+          if (field === 'share') return Number(range.share.toFixed(1))
+          if (field === 'trend' && range.trend.length > 0) {
+            const last = range.trend[range.trend.length - 1]
+            const prev = range.trend[range.trend.length - 2]
+            if (prev !== undefined) return Number((last - prev).toFixed(1))
+            return Number(last.toFixed(1))
+          }
+        }
+        return '-'
+      }
+
+      if (category === 'festival') {
+        const festivalMap: Record<string, string> = {
+          springFestival: '春节',
+          valentines: '情人节',
+          midAutumn: '中秋',
+          christmas: '圣诞节',
+          newYear: '元旦',
+          qingming: '清明'
+        }
+        const catMap: Record<string, string> = {
+          baijiu: '白酒',
+          wine: '红酒',
+          highEnd: '高端酒',
+          sparkling: '香槟/起泡酒',
+          beer: '啤酒',
+          huangjiu: '黄酒'
+        }
+        const festKey = parts[1]
+        const catKey = parts[2]
+        const fest = filteredFestivals.value.find(f => f.festival === festivalMap[festKey])
+        if (fest) {
+          if (catKey === 'highEnd') {
+            const avg = fest.data.reduce((s, d) => s + d.highEndRatio, 0) / fest.data.length
+            return Number(avg.toFixed(1))
+          }
+          const item = fest.data.find(d => d.category === catMap[catKey])
+          if (item) return Number(item.salesMultiple.toFixed(1))
+        }
+        return '-'
+      }
+    } catch (e) {
+      console.warn('Error getting metric value:', metricId, e)
+    }
+    return '-'
+  }
+
+  function getMetricTrend(metricId: string): number | undefined {
+    const parts = metricId.split('_')
+    const category = parts[0]
+
+    try {
+      if (category === 'overview' && overview.value) {
+        if (metricId === 'overview_totalGrowth') return overview.value.totalGrowth
+        if (metricId === 'overview_craftBeerIndex') {
+          const whiskeyCat = categories.value.find(c => c.name === '威士忌')
+          if (whiskeyCat && whiskeyCat.growth.length > 0) {
+            return Number(whiskeyCat.growth[whiskeyCat.growth.length - 1].toFixed(1))
+          }
+        }
+      }
+      if (category === 'category') {
+        const field = parts[2]
+        if (field === 'growth') return undefined
+        const catNameMap: Record<string, string> = {
+          baijiu: '白酒', beer: '啤酒', wine: '红酒',
+          huangjiu: '黄酒', craftBeer: '精酿啤酒', whiskey: '威士忌'
+        }
+        const catKey = parts[1]
+        const catName = catNameMap[catKey]
+        const cat = categories.value.find(c => c.name === catName)
+        if (cat && cat.growth.length > 0) {
+          return Number(cat.growth[cat.growth.length - 1].toFixed(1))
+        }
+      }
+      if (category === 'price' && parts[2] === 'trend') {
+        const rangeMap: Record<string, string> = {
+          low: '百元以下', mid: '100-300元', high: '300-800元',
+          premium: '800-2000元', luxury: '2000元以上'
+        }
+        const priceKey = parts[1]
+        const range = priceRanges.value.find(p => p.range.includes(rangeMap[priceKey]))
+        if (range && range.trend.length >= 2) {
+          const last = range.trend[range.trend.length - 1]
+          const prev = range.trend[range.trend.length - 2]
+          return Number(((last - prev) / prev * 100).toFixed(1))
+        }
+      }
+    } catch (e) {
+      console.warn('Error getting metric trend:', metricId, e)
+    }
+    return undefined
+  }
 
   function loadAnomalySettings() {
     try {
@@ -649,6 +932,8 @@ export const useDashboardStore = defineStore('dashboard', () => {
     loading.value = true
     error.value = null
     try {
+      loadCustomMetrics()
+      loadAnomalySettings()
       await Promise.all([
         fetchOverview(),
         fetchCategory(),
@@ -732,6 +1017,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
     filters,
     anomalySettings,
     anomalies,
+    customMetrics,
     anomalyCount,
     criticalAnomalyCount,
     categoryGrowthAnomalies,
@@ -764,6 +1050,13 @@ export const useDashboardStore = defineStore('dashboard', () => {
     getPriceAnomaliesByRange,
     getImportAnomaliesByMetric,
     getRegionAnomaliesByCity,
-    getRegionAnomaliesByCityAndMetric
+    getRegionAnomaliesByCityAndMetric,
+    setCustomMetrics,
+    setCustomMetricsEnabled,
+    resetCustomMetrics,
+    getMetricValue,
+    getMetricTrend,
+    loadCustomMetrics,
+    saveCustomMetrics
   }
 })

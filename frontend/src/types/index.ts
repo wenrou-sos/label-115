@@ -154,3 +154,35 @@ export interface AnnotationPoint {
 
 export type AnnotationCharts = Record<string, AnnotationPoint[]>
 
+export type MetricCategory = 'overview' | 'category' | 'region' | 'age' | 'price' | 'festival'
+
+export interface MetricMeta {
+  id: string
+  name: string
+  category: MetricCategory
+  categoryLabel: string
+  unit?: string
+  icon?: string
+  description?: string
+  color?: 'wine' | 'gold' | 'blue' | 'green'
+}
+
+export interface CustomMetric {
+  id: string
+  order: number
+}
+
+export interface CustomMetricsConfig {
+  enabled: boolean
+  metrics: CustomMetric[]
+}
+
+export const METRIC_CATEGORY_LABELS: Record<MetricCategory, string> = {
+  overview: '概览指标',
+  category: '品类数据',
+  region: '区域指数',
+  age: '年龄段占比',
+  price: '价格带分析',
+  festival: '节日效应'
+}
+

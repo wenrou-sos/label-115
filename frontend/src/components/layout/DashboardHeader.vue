@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Wine, RefreshCw, TrendingUp, Calendar, Share2, MessageSquareText } from 'lucide-vue-next'
+import { Wine, RefreshCw, TrendingUp, Calendar, Share2, MessageSquareText, SlidersHorizontal } from 'lucide-vue-next'
 import { NButton, NSpace, NBadge, useLoadingBar, useMessage } from 'naive-ui'
 import { useRoute } from 'vue-router'
 import { useDashboardStore, copyShareUrl } from '@/stores/dashboard'
@@ -10,8 +10,12 @@ import SettingsPanel from './SettingsPanel.vue'
 import AnnotationsPanel from './AnnotationsPanel.vue'
 import { useAnnotations } from '@/composables/useAnnotations'
 
+const emit = defineEmits<{
+  (e: 'openCustomMetrics'): void
+}>()
+
 const store = useDashboardStore()
-const { loading, overview } = storeToRefs(store)
+const { loading, overview, customMetrics } = storeToRefs(store)
 const loadingBar = useLoadingBar()
 const message = useMessage()
 const route = useRoute()
@@ -28,6 +32,8 @@ function handleShare() {
   const url = store.getShareUrl(route.path)
   copyShareUrl(url, message)
 }
+
+const customMetricsCount = () => customMetrics.value.metrics.length
 </script>
 
 <template>
@@ -60,6 +66,26 @@ function handleShare() {
             <Calendar class="w-4 h-4 text-champagne-500/70" />
             <span>数据更新: 2025年Q4</span>
           </div>
+          <NButton
+            size="medium"
+            quaternary
+            @click="emit('openCustomMetrics')"
+            class="!border !border-champagne-500/40 hover:!border-champagne-500/70"
+          >
+            <template #icon>
+              <NBadge
+                :value="customMetricsCount()"
+                :hidden="customMetricsCount() === 0"
+                type="success"
+                :show-zero="false"
+                size="small"
+                class="mr-0.5"
+              >
+                <SlidersHorizontal class="w-4 h-4 text-champagne-400" />
+              </NBadge>
+            </template>
+            <span class="text-champagne-300">自定义指标</span>
+          </NButton>
           <NButton
             size="medium"
             quaternary
