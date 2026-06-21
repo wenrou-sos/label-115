@@ -1,11 +1,16 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import type { EChartsOption } from 'echarts'
 import { useDashboardStore } from '@/stores/dashboard'
 import { baseTooltip, baseLegend, baseGrid, darkAxisStyle } from '@/utils/chartOptions'
 import { Globe, TrendingDown } from 'lucide-vue-next'
+import { useAnnotations } from '@/composables/useAnnotations'
+import AnnotationTags from '@/components/layout/AnnotationTags.vue'
+import AnnotationDialog from '@/components/layout/AnnotationDialog.vue'
+import type { AnnotationPoint } from '@/types'
 
 const store = useDashboardStore()
+const annotations = useAnnotations()
 
 const lineColors: Record<string, string> = {
   '进口葡萄酒': '#4A90D9',
@@ -21,6 +26,69 @@ const seriesToMetricMap: Record<string, string> = {
   '进口威士忌': '进口威士忌份额',
   '国产威士忌': '国产威士忌份额',
   '关税率': '关税率'
+}
+
+const showDialog = ref(false)
+const dialogPayload = ref({
+  entityName: '',
+  metricName: '',
+  timePoint: undefined as string | undefined,
+  value: undefined as number | undefined,
+  color: '#D4AF37',
+  initialContent: ''
+})
+const existingId = ref<string | null>(null)
+
+function openAnnotation(seriesName: string, timePoint: string, value: number) {
+  const metric = seriesToMetricMap[seriesName] || seriesName
+  const color = lineColors[seriesName] || '#D4AF37'
+  const existing = annotations.getAnnotation('import', seriesName, metric, timePoint)
+  existingId.value = existing?.id || null
+  dialogPayload.value = {
+    entityName: seriesName,
+    metricName: metric,
+    timePoint,
+    value,
+    color,
+    initialContent: existing?.content || ''
+  }
+  showDialog.value = true
+}
+
+function onChartClick(params: any) {
+  if (params && params.seriesName && params.name && typeof params.value === 'number') {
+    openAnnotation(params.seriesName, String(params.name), params.value)
+  }
+}
+
+function handleDialogConfirm(content: string) {
+  if (existingId.value) {
+    annotations.updateAnnotation(existingId.value, content)
+  } else {
+    annotations.addAnnotation({
+      module: 'import',
+      entity: dialogPayload.value.entityName,
+      metric: dialogPayload.value.metricName,
+      timePoint: dialogPayload.value.timePoint,
+      value: dialogPayload.value.value,
+      color: dialogPayload.value.color,
+      content
+    })
+  }
+  showDialog.value = false
+}
+
+function handleTagEdit(item: AnnotationPoint) {
+  existingId.value = item.id
+  dialogPayload.value = {
+    entityName: item.entity,
+    metricName: item.metric,
+    timePoint: item.timePoint,
+    value: item.value,
+    color: item.color,
+    initialContent: item.content
+  }
+  showDialog.value = true
 }
 
 function buildAnomalyMarkPoints(seriesName: string, years: string[], getY: (year: string) => number | undefined): any | undefined {
@@ -57,6 +125,34 @@ function buildAnomalyMarkPoints(seriesName: string, years: string[], getY: (year
       })
     }
   })
+
+  years.forEach(y => {
+    const ann = annotations.getAnnotation('import', seriesName, seriesToMetricMap[seriesName] || seriesName, y)
+    if (ann) {
+      const yVal = getY(y)
+      if (yVal !== undefined) {
+        result.push({
+          name: ann.content,
+          coord: [y, yVal],
+          value: '📝',
+          symbol: 'pin',
+          symbolSize: 36,
+          itemStyle: {
+            color: lineColors[seriesName] || '#D4AF37',
+            borderColor: '#1A1A2E',
+            borderWidth: 2,
+            shadowBlur: 8,
+            shadowColor: lineColors[seriesName] || '#D4AF37'
+          },
+          label: { show: true, color: '#fff', fontSize: 10, formatter: '📝' },
+          emphasis: {
+            label: { show: true, formatter: ann.content, fontSize: 12, width: 160, overflow: 'break' }
+          }
+        })
+      }
+    }
+  })
+
   return result.length > 0 ? {
     symbol: 'circle',
     symbolSize: 12,
@@ -94,6 +190,13 @@ const chartOption = computed<EChartsOption>(() => {
   const domesticWhiskeyByYear = (y: string) => data.find(d => d.year === y)?.domesticWhiskeyShare
   const tariffByYear = (y: string) => data.find(d => d.year === y)?.tariffRate
 
+  const anomalyMP = buildAnomalyMarkPoints('关税率', years, tariffByYear)
+  const tariffMPData = anomalyMP?.data || []
+  const finalTariffMP = tariffMPData.length > 0 ? {
+    ...anomalyMP,
+    data: [...tariffMarkPoints, ...tariffMPData]
+  } : (tariffMarkPoints.length > 0 ? { symbol: 'pin', symbolSize: 48, data: tariffMarkPoints } : undefined)
+
   return {
     tooltip: {
       ...baseTooltip,
@@ -108,11 +211,37 @@ const chartOption = computed<EChartsOption>(() => {
         let html = `<div style="font-weight:600;margin-bottom:8px;color:#D4AF37">${year}年</div>`
         arr.forEach((p: any) => {
           const unit = p.seriesName === '关税率' ? '%' : '%'
+          const ann = annotations.getAnnotation(
+            'import',
+            p.seriesName,
+            seriesToMetricMap[p.seriesName] || p.seriesName,
+            year
+          )
           html += `<div style="display:flex;align-items:center;gap:8px;margin:4px 0">
             <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${p.color}"></span>
             <span>${p.seriesName}：<strong style="color:#fff">${p.value}${unit}</strong></span>
           </div>`
+          if (p.marker && p.data && typeof p.data === 'object' && p.data.value) {
+            const val = p.data.value
+            const isAnom = typeof val === 'string' && val.includes('%')
+            const isPin = val === '📝'
+            if (isAnom) {
+              html += `<div style="font-size:11px;color:${String(val).startsWith('+') ? '#fca5a5' : '#fcd34d'};margin-left:14px">
+                ⚠ ${p.data.value}
+              </div>`
+            } else if (isPin) {
+              // annotation pin
+            } else if (typeof val === 'string' && val.includes('%') && p.data.name?.includes('关税')) {
+              // tariff rate mark point
+            }
+          }
+          if (ann) {
+            html += `<div style="margin:4px 0 4px 14px;padding:3px 6px;background:${ann.color}22;border-left:2px solid ${ann.color};border-radius:3px;font-size:11px;color:#e5e5ea">
+              📝 ${ann.content}
+            </div>`
+          }
         })
+        html += `<div style="margin-top:6px;font-size:11px;color:#888;border-top:1px solid #333;padding-top:4px">💡 点击折线拐点可添加标注</div>`
         return html
       }
     },
@@ -228,7 +357,7 @@ const chartOption = computed<EChartsOption>(() => {
         symbolSize: 10,
         lineStyle: { width: 3, color: lineColors['关税率'] },
         itemStyle: { color: lineColors['关税率'], borderWidth: 2, borderColor: '#1A1A2E' },
-        markPoint: { data: tariffMarkPoints, ...(buildAnomalyMarkPoints('关税率', years, tariffByYear) || {}) },
+        markPoint: finalTariffMP,
         data: tariffData
       }
     ]
@@ -268,7 +397,22 @@ const insights = computed(() => {
     </div>
 
     <div class="flex-1 min-h-[320px]">
-      <VChart :option="chartOption" autoresize class="w-full h-full" />
+      <VChart :option="chartOption" autoresize class="w-full h-full" @click="onChartClick" />
+    </div>
+
+    <div class="mt-4">
+      <AnnotationTags module="import" @edit="handleTagEdit" />
     </div>
   </div>
+
+  <AnnotationDialog
+    v-model:show="showDialog"
+    :entity-name="dialogPayload.entityName"
+    :metric-name="dialogPayload.metricName"
+    :time-point="dialogPayload.timePoint"
+    :value="dialogPayload.value"
+    :color="dialogPayload.color"
+    :initial-content="dialogPayload.initialContent"
+    @confirm="handleDialogConfirm"
+  />
 </template>

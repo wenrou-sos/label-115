@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { PieChart, LineChart } from 'echarts/charts'
@@ -8,25 +8,127 @@ import {
   TooltipComponent,
   LegendComponent,
   GridComponent,
-  MarkPointComponent
+  MarkPointComponent,
+  GraphicComponent
 } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import type { EChartsOption } from 'echarts'
 import { TrendingUp, PieChart as PieChartIcon, Activity } from 'lucide-vue-next'
 import { useDashboardStore } from '@/stores/dashboard'
 import { baseTooltip, baseLegend, baseGrid, darkAxisStyle } from '@/utils/chartOptions'
+import { useAnnotations } from '@/composables/useAnnotations'
+import AnnotationTags from '@/components/layout/AnnotationTags.vue'
+import AnnotationDialog from '@/components/layout/AnnotationDialog.vue'
+import type { AnnotationPoint } from '@/types'
 
-use([PieChart, LineChart, TitleComponent, TooltipComponent, LegendComponent, GridComponent, CanvasRenderer, MarkPointComponent])
+use([PieChart, LineChart, TitleComponent, TooltipComponent, LegendComponent, GridComponent, CanvasRenderer, MarkPointComponent, GraphicComponent])
 
 const store = useDashboardStore()
+const annotations = useAnnotations()
+
+const showDialog = ref(false)
+const dialogPayload = ref({
+  entityName: '',
+  metricName: '',
+  timePoint: undefined as string | undefined,
+  value: undefined as number | undefined,
+  color: '#D4AF37',
+  initialContent: ''
+})
+const existingId = ref<string | null>(null)
+
+function openPieAnnotation(name: string, value: number) {
+  const category = store.categories.find(c => c.name === name)
+  const color = category?.color || '#D4AF37'
+  const metric = '市场份额'
+  const existing = annotations.getAnnotation('category', name, metric)
+  existingId.value = existing?.id || null
+  dialogPayload.value = {
+    entityName: name,
+    metricName: metric,
+    timePoint: undefined,
+    value: value,
+    color,
+    initialContent: existing?.content || ''
+  }
+  showDialog.value = true
+}
+
+function openLineAnnotation(name: string, timePoint: string, value: number) {
+  const category = store.categories.find(c => c.name === name)
+  const color = category?.color || '#D4AF37'
+  const metric = '增速'
+  const existing = annotations.getAnnotation('category', name, metric, timePoint)
+  existingId.value = existing?.id || null
+  dialogPayload.value = {
+    entityName: name,
+    metricName: metric,
+    timePoint,
+    value,
+    color,
+    initialContent: existing?.content || ''
+  }
+  showDialog.value = true
+}
+
+function onPieClick(params: any) {
+  if (params && params.name && typeof params.value === 'number') {
+    openPieAnnotation(params.name, params.value)
+  }
+}
+
+function onLineClick(params: any) {
+  if (params && params.seriesName && params.name && typeof params.value === 'number') {
+    openLineAnnotation(params.seriesName, String(params.name), params.value)
+  }
+}
+
+function handleDialogConfirm(content: string) {
+  if (existingId.value) {
+    annotations.updateAnnotation(existingId.value, content)
+  } else {
+    annotations.addAnnotation({
+      module: 'category',
+      entity: dialogPayload.value.entityName,
+      metric: dialogPayload.value.metricName,
+      timePoint: dialogPayload.value.timePoint,
+      value: dialogPayload.value.value,
+      color: dialogPayload.value.color,
+      content
+    })
+  }
+  showDialog.value = false
+}
+
+function handleTagEdit(item: AnnotationPoint) {
+  existingId.value = item.id
+  dialogPayload.value = {
+    entityName: item.entity,
+    metricName: item.metric,
+    timePoint: item.timePoint,
+    value: item.value,
+    color: item.color,
+    initialContent: item.content
+  }
+  showDialog.value = true
+}
 
 const pieOption = computed<EChartsOption>(() => {
   const raw = store.filteredCategories
   const total = raw.reduce((s, c) => s + c.share, 0) || 1
-  const data = raw.map(c => ({
-    name: c.name,
-    value: Number(((c.share / total) * 100).toFixed(1))
-  }))
+  const data = raw.map(c => {
+    const ann = annotations.getAnnotation('category', c.name, '市场份额')
+    return {
+      name: c.name,
+      value: Number(((c.share / total) * 100).toFixed(1)),
+      itemStyle: ann ? {
+        borderColor: c.color,
+        borderWidth: 3,
+        shadowBlur: 14,
+        shadowColor: c.color
+      } : undefined
+    }
+  })
 
   return {
     tooltip: {
@@ -35,7 +137,17 @@ const pieOption = computed<EChartsOption>(() => {
       borderColor: '#D4AF37',
       borderWidth: 1,
       textStyle: { color: '#fff', fontSize: 13 },
-      formatter: '{b}: {c}%'
+      formatter: (p: any) => {
+        const ann = annotations.getAnnotation('category', p.name, '市场份额')
+        let html = `<div><b>${p.name}</b>：<span style="color:#D4AF37">${p.value}%</span></div>`
+        if (ann) {
+          html += `<div style="margin-top:6px;padding:4px 6px;background:${ann.color}22;border-left:2px solid ${ann.color};border-radius:3px;font-size:12px;color:#e5e5ea">
+            📝 ${ann.content}
+          </div>`
+        }
+        html += `<div style="margin-top:6px;font-size:11px;color:#888;border-top:1px solid #333;padding-top:4px">💡 点击此扇区可添加标注</div>`
+        return html
+      }
     },
     legend: {
       ...baseLegend,
@@ -83,7 +195,6 @@ const pieOption = computed<EChartsOption>(() => {
 
 const lineOption = computed<EChartsOption>(() => {
   const years = store.filteredYears.length > 0 ? store.filteredYears : store.years
-  const yearIdxOffset = store.years.indexOf(years[0]) >= 0 ? store.years.indexOf(years[0]) : 0
   const highlightMarks = store.anomalySettings.highlightMarks
 
   const series = store.filteredCategories.map(c => {
@@ -124,12 +235,44 @@ const lineOption = computed<EChartsOption>(() => {
       }
     })
 
+    years.forEach((y, yi) => {
+      const ann = annotations.getAnnotation('category', c.name, '增速', y)
+      if (ann) {
+        const value = c.growth[yi]
+        if (value !== undefined) {
+          markPointData.push({
+            name: ann.content,
+            coord: [y, value],
+            value: '📝',
+            symbol: 'pin',
+            symbolSize: 38,
+            itemStyle: {
+              color: c.color,
+              borderColor: '#1A1A2E',
+              borderWidth: 2,
+              shadowBlur: 10,
+              shadowColor: c.color
+            },
+            label: {
+              show: true,
+              color: '#fff',
+              fontSize: 10,
+              formatter: '📝'
+            },
+            emphasis: {
+              label: { show: true, formatter: ann.content, fontSize: 12, width: 160, overflow: 'break' }
+            }
+          })
+        }
+      }
+    })
+
     return {
       name: c.name,
       type: 'line' as const,
       smooth: true,
       symbol: 'circle',
-      symbolSize: 6,
+      symbolSize: 7,
       lineStyle: { width: 2 },
       itemStyle: { color: c.color },
       data: c.growth,
@@ -151,16 +294,23 @@ const lineOption = computed<EChartsOption>(() => {
         const list = Array.isArray(params) ? params : [params]
         let html = `<div style="font-weight:bold;margin-bottom:6px;color:#D4AF37">${list[0]?.axisValue || ''}</div>`
         list.forEach((p: any) => {
+          const ann = annotations.getAnnotation('category', p.seriesName, '增速', list[0]?.axisValue)
           html += `<div style="display:flex;align-items:center;gap:6px;margin:3px 0">
             <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${p.color}"></span>
             <span>${p.seriesName}：<b>${p.value}%</b></span>
           </div>`
-          if (p.marker && p.data && typeof p.data === 'object' && p.data.value) {
-            html += `<div style="font-size:11px;color:${p.data.value > 0 ? '#fca5a5' : '#fcd34d'};margin-left:14px">
+          if (p.marker && p.data && typeof p.data === 'object' && p.data.value && String(p.data.value).includes('%')) {
+            html += `<div style="font-size:11px;color:${String(p.data.value).startsWith('+') ? '#fca5a5' : '#fcd34d'};margin-left:14px">
               ⚠ ${p.data.value} 异常波动
             </div>`
           }
+          if (ann) {
+            html += `<div style="margin:4px 0 4px 14px;padding:3px 6px;background:${ann.color}22;border-left:2px solid ${ann.color};border-radius:3px;font-size:11px;color:#e5e5ea">
+              📝 ${ann.content}
+            </div>`
+          }
         })
+        html += `<div style="margin-top:6px;font-size:11px;color:#888;border-top:1px solid #333;padding-top:4px">💡 点击折线拐点可添加标注</div>`
         return html
       }
     },
@@ -213,11 +363,25 @@ const highlightMetrics = computed(() => [
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5 flex-1 min-h-0">
       <div class="bg-ink-900/40 rounded-lg p-3 min-h-[280px]">
-        <VChart class="w-full h-full" :option="pieOption" autoresize />
+        <VChart
+          class="w-full h-full"
+          :option="pieOption"
+          autoresize
+          @click="onPieClick"
+        />
       </div>
       <div class="bg-ink-900/40 rounded-lg p-3 min-h-[280px]">
-        <VChart class="w-full h-full" :option="lineOption" autoresize />
+        <VChart
+          class="w-full h-full"
+          :option="lineOption"
+          autoresize
+          @click="onLineClick"
+        />
       </div>
+    </div>
+
+    <div class="mb-4">
+      <AnnotationTags module="category" @edit="handleTagEdit" />
     </div>
 
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -245,4 +409,15 @@ const highlightMetrics = computed(() => [
       </div>
     </div>
   </div>
+
+  <AnnotationDialog
+    v-model:show="showDialog"
+    :entity-name="dialogPayload.entityName"
+    :metric-name="dialogPayload.metricName"
+    :time-point="dialogPayload.timePoint"
+    :value="dialogPayload.value"
+    :color="dialogPayload.color"
+    :initial-content="dialogPayload.initialContent"
+    @confirm="handleDialogConfirm"
+  />
 </template>

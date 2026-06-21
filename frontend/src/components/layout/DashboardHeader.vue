@@ -1,17 +1,22 @@
 <script setup lang="ts">
-import { Wine, RefreshCw, TrendingUp, Calendar, Share2 } from 'lucide-vue-next'
-import { NButton, NSpace, useLoadingBar, useMessage } from 'naive-ui'
+import { Wine, RefreshCw, TrendingUp, Calendar, Share2, MessageSquareText } from 'lucide-vue-next'
+import { NButton, NSpace, NBadge, useLoadingBar, useMessage } from 'naive-ui'
 import { useRoute } from 'vue-router'
 import { useDashboardStore, copyShareUrl } from '@/stores/dashboard'
 import { storeToRefs } from 'pinia'
+import { ref } from 'vue'
 import AnomalyBadge from './AnomalyBadge.vue'
 import SettingsPanel from './SettingsPanel.vue'
+import AnnotationsPanel from './AnnotationsPanel.vue'
+import { useAnnotations } from '@/composables/useAnnotations'
 
 const store = useDashboardStore()
 const { loading, overview } = storeToRefs(store)
 const loadingBar = useLoadingBar()
 const message = useMessage()
 const route = useRoute()
+const annotations = useAnnotations()
+const showAnnotations = ref(false)
 
 async function handleRefresh() {
   loadingBar.start()
@@ -55,6 +60,26 @@ function handleShare() {
             <Calendar class="w-4 h-4 text-champagne-500/70" />
             <span>数据更新: 2025年Q4</span>
           </div>
+          <NButton
+            size="medium"
+            quaternary
+            @click="showAnnotations = true"
+            class="!border !border-ink-600/60 hover:!border-champagne-500/60"
+          >
+            <template #icon>
+              <NBadge
+                :value="annotations.count.value"
+                :hidden="annotations.count.value === 0"
+                type="warning"
+                :show-zero="false"
+                size="small"
+                class="mr-0.5"
+              >
+                <MessageSquareText class="w-4 h-4 text-champagne-400" />
+              </NBadge>
+            </template>
+            <span class="text-champagne-300">查看所有标注</span>
+          </NButton>
           <AnomalyBadge />
           <SettingsPanel />
           <NButton
@@ -84,5 +109,6 @@ function handleShare() {
         </NSpace>
       </div>
     </div>
+    <AnnotationsPanel v-model:show="showAnnotations" />
   </header>
 </template>

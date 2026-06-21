@@ -126,3 +126,21 @@ export interface AnomalySettings {
   highlightMarks: boolean
 }
 
+export type AnnotationModule = 'category' | 'region' | 'price' | 'import' | 'age' | 'festival'
+
+export interface AnnotationPoint {
+  id: string
+  module: AnnotationModule
+  moduleLabel: string
+  entity: string
+  metric: string
+  timePoint?: string
+  value?: number
+  color: string
+  content: string
+  createdAt: number
+  updatedAt: number
+}
+
+export type AnnotationCharts = Record<string, AnnotationPoint[]>
+

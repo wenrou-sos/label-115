@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h } from 'vue'
+import { computed, h, ref } from 'vue'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { RadarChart } from 'echarts/charts'
@@ -12,15 +12,20 @@ import {
 } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import type { EChartsOption } from 'echarts'
-import { NDataTable, NTag } from 'naive-ui'
+import { NDataTable, NTag, NTooltip, useMessage } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
-import { MapPin, Award, Sparkles, AlertTriangle } from 'lucide-vue-next'
+import { MapPin, Award, Sparkles, AlertTriangle, MessageSquarePlus } from 'lucide-vue-next'
 import { useDashboardStore } from '@/stores/dashboard'
-import type { CityData, AnomalyPoint } from '@/types'
+import { useAnnotations } from '@/composables/useAnnotations'
+import AnnotationTags from '@/components/layout/AnnotationTags.vue'
+import AnnotationDialog from '@/components/layout/AnnotationDialog.vue'
+import type { CityData, AnomalyPoint, AnnotationPoint } from '@/types'
 
 use([RadarChart, TitleComponent, TooltipComponent, LegendComponent, RadarComponent, MarkPointComponent, CanvasRenderer])
 
 const store = useDashboardStore()
+const annotations = useAnnotations()
+const message = useMessage()
 
 const radarDimensions = [
   { name: '白酒', max: 100, key: 'baijiu', label: '白酒占比' },
@@ -33,12 +38,79 @@ const radarDimensions = [
 
 const radarColors = ['#8B0000', '#D4AF37', '#CD853F', '#FF69B4', '#4A90D9']
 
+const showDialog = ref(false)
+const dialogPayload = ref({
+  entityName: '',
+  metricName: '',
+  timePoint: undefined as string | undefined,
+  value: undefined as number | undefined,
+  color: '#D4AF37',
+  initialContent: ''
+})
+const existingId = ref<string | null>(null)
+
+function openCityAnnotation(cityName: string, metricName: string, value?: number) {
+  const idx = store.radarCities.findIndex(c => c.city === cityName)
+  const color = radarColors[idx % radarColors.length]
+  const existing = annotations.getAnnotation('region', cityName, metricName)
+  existingId.value = existing?.id || null
+  const city = store.cities.find(c => c.city === cityName)
+  dialogPayload.value = {
+    entityName: cityName,
+    metricName,
+    timePoint: city?.region,
+    value: value !== undefined ? value : undefined,
+    color,
+    initialContent: existing?.content || ''
+  }
+  showDialog.value = true
+}
+
+function onRadarClick(params: any) {
+  if (params && params.seriesName) {
+    openCityAnnotation(params.seriesName, '区域综合偏好')
+  }
+}
+
+function handleDialogConfirm(content: string) {
+  if (existingId.value) {
+    annotations.updateAnnotation(existingId.value, content)
+    message.success('标注已更新')
+  } else {
+    annotations.addAnnotation({
+      module: 'region',
+      entity: dialogPayload.value.entityName,
+      metric: dialogPayload.value.metricName,
+      timePoint: dialogPayload.value.timePoint,
+      value: dialogPayload.value.value,
+      color: dialogPayload.value.color,
+      content
+    })
+    message.success('标注已添加')
+  }
+  showDialog.value = false
+}
+
+function handleTagEdit(item: AnnotationPoint) {
+  existingId.value = item.id
+  dialogPayload.value = {
+    entityName: item.entity,
+    metricName: item.metric,
+    timePoint: item.timePoint,
+    value: item.value,
+    color: item.color,
+    initialContent: item.content
+  }
+  showDialog.value = true
+}
+
 const radarOption = computed<EChartsOption>(() => {
   const cities = store.radarCities
   const highlightMarks = store.anomalySettings.highlightMarks
 
   const series = cities.map((c, idx) => {
     const cityAnomalies = highlightMarks ? store.getRegionAnomaliesByCity(c.city) : []
+    const cityAnnotations = annotations.getAnnotationsByEntity('region', c.city)
     const markPointData: any[] = []
 
     if (cityAnomalies.length > 0) {
@@ -79,6 +151,34 @@ const radarOption = computed<EChartsOption>(() => {
       })
     }
 
+    if (cityAnnotations.length > 0) {
+      radarDimensions.forEach((dim, dimIdx) => {
+        const ann = cityAnnotations.find(a => a.metric === dim.label)
+        if (ann) {
+          const value = (c as any)[dim.key] as number
+          markPointData.push({
+            name: ann.content,
+            coord: [dimIdx, value],
+            value: '📝',
+            symbol: 'pin',
+            symbolSize: 36,
+            itemStyle: {
+              color: radarColors[idx % radarColors.length],
+              borderColor: '#1A1A2E',
+              borderWidth: 2,
+              shadowBlur: 8,
+              shadowColor: radarColors[idx % radarColors.length]
+            },
+            label: { show: true, color: '#fff', fontSize: 10, formatter: '📝' },
+            emphasis: {
+              label: { show: true, formatter: ann.content, fontSize: 12, width: 160, overflow: 'break' }
+            }
+          })
+        }
+      })
+    }
+
+    const hasAnyAnnotation = cityAnnotations.length > 0
     return {
       type: 'radar' as const,
       name: c.city,
@@ -89,8 +189,15 @@ const radarOption = computed<EChartsOption>(() => {
         {
           name: c.city,
           value: [c.baijiu, c.beer, c.craftBeer, c.wine, c.huangjiu, c.whiskey],
-          lineStyle: { width: 2, color: radarColors[idx % radarColors.length] },
-          areaStyle: { color: `${radarColors[idx % radarColors.length]}22` },
+          lineStyle: {
+            width: hasAnyAnnotation ? 3 : 2,
+            color: radarColors[idx % radarColors.length]
+          },
+          areaStyle: {
+            color: hasAnyAnnotation
+              ? `${radarColors[idx % radarColors.length]}44`
+              : `${radarColors[idx % radarColors.length]}22`
+          },
           itemStyle: { color: radarColors[idx % radarColors.length] }
         }
       ],
@@ -115,21 +222,35 @@ const radarOption = computed<EChartsOption>(() => {
         const list = Array.isArray(params) ? params : [params]
         let html = ''
         list.forEach((p: any) => {
-          html += `<div style="font-weight:bold;margin-bottom:6px;color:${p.color}">${p.seriesName || p.name}</div>`
+          const cityName = p.seriesName || p.name
+          const cityAnnotations = annotations.getAnnotationsByEntity('region', cityName)
+          html += `<div style="font-weight:bold;margin-bottom:6px;color:${p.color}">${cityName}</div>`
           if (p.value && Array.isArray(p.value)) {
             radarDimensions.forEach((dim, i) => {
+              const ann = cityAnnotations.find(a => a.metric === dim.label)
               html += `<div style="display:flex;align-items:center;gap:6px;margin:3px 0">
                 <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${p.color}"></span>
                 <span>${dim.name}：<b>${p.value[i]}%</b></span>
+                ${ann ? `<span style="font-size:11px;background:${ann.color}22;color:${ann.color};padding:0 4px;border-radius:2px">📝</span>` : ''}
               </div>`
             })
           }
           if (p.marker && p.data && typeof p.data === 'object' && p.data.value) {
-            html += `<div style="font-size:11px;color:${p.data.value > 0 ? '#fca5a5' : '#fcd34d'};margin-left:14px">
-              ⚠ ${p.data.value} 异常偏离
-            </div>`
+            const val = p.data.value
+            const isAnom = typeof val === 'string' && val.includes('%')
+            if (isAnom) {
+              html += `<div style="font-size:11px;color:${String(val).startsWith('+') ? '#fca5a5' : '#fcd34d'};margin-left:14px">
+                ⚠ ${p.data.value} 异常偏离
+              </div>`
+            }
           }
+          cityAnnotations.forEach(ann => {
+            html += `<div style="margin:4px 0 4px 14px;padding:3px 6px;background:${ann.color}22;border-left:2px solid ${ann.color};border-radius:3px;font-size:11px;color:#e5e5ea">
+              📝 [${ann.metric}] ${ann.content}
+            </div>`
+          })
         })
+        html += `<div style="margin-top:6px;font-size:11px;color:#888;border-top:1px solid #333;padding-top:4px">💡 点击雷达图区域或排行行✏️可添加标注</div>`
         return html
       }
     },
@@ -171,6 +292,7 @@ const rankingData = computed(() => {
     .map((city, index) => {
       const cityAnomalies = store.getRegionAnomaliesByCity(city.city)
       const hasCritical = cityAnomalies.some(a => a.severity === 'critical')
+      const cityAnnotations = annotations.getAnnotationsByEntity('region', city.city)
       return {
         key: city.city,
         rank: index + 1,
@@ -178,7 +300,8 @@ const rankingData = computed(() => {
         region: city.region,
         craftIndex: city.craftIndex,
         anomalyCount: cityAnomalies.length,
-        anomalySeverity: hasCritical ? 'critical' : cityAnomalies.length > 0 ? 'warning' : 'none' as 'critical' | 'warning' | 'none'
+        anomalySeverity: hasCritical ? 'critical' : cityAnomalies.length > 0 ? 'warning' : 'none' as 'critical' | 'warning' | 'none',
+        annotationCount: cityAnnotations.length
       }
     })
 })
@@ -190,6 +313,7 @@ interface RankingRow {
   craftIndex: number
   anomalyCount: number
   anomalySeverity: 'critical' | 'warning' | 'none'
+  annotationCount: number
 }
 
 const rankingColumns: DataTableColumns<RankingRow> = [
@@ -237,7 +361,12 @@ const rankingColumns: DataTableColumns<RankingRow> = [
                 ]
               })
             : null,
-          h('span', { class: 'text-ink-100' }, row.city)
+          h('span', { class: 'text-ink-100' }, row.city),
+          row.annotationCount > 0
+            ? h(NTag, { size: 'tiny', round: true, type: 'success', bordered: false }, {
+                default: () => `${row.annotationCount}📝`
+              })
+            : null
         ]
       )
     }
@@ -246,12 +375,25 @@ const rankingColumns: DataTableColumns<RankingRow> = [
   {
     title: '精酿指数',
     key: 'craftIndex',
-    width: 90,
+    width: 110,
     render: (row: RankingRow) => {
       return h(
-        'span',
-        { class: ['font-bold', 'text-champagne-400'] },
-        row.craftIndex.toFixed(1)
+        'div',
+        { class: 'flex items-center justify-between w-full' },
+        [
+          h('span', { class: ['font-bold', 'text-champagne-400'] }, row.craftIndex.toFixed(1)),
+          h(NTooltip, null, {
+            trigger: () => h(
+              'button',
+              {
+                class: 'p-1 rounded hover:bg-ink-700/60 text-ink-400 hover:text-champagne-400 transition-colors',
+                onClick: () => openCityAnnotation(row.city, '精酿指数', row.craftIndex)
+              },
+              [h(MessageSquarePlus, { class: 'w-3.5 h-3.5' })]
+            ),
+            default: () => '添加标注'
+          })
+        ]
       )
     }
   }
@@ -283,7 +425,12 @@ const regionTags = [
 
     <div class="grid grid-cols-1 lg:grid-cols-5 gap-5 mb-5 flex-1 min-h-0">
       <div class="lg:col-span-3 bg-ink-900/40 rounded-lg p-3 min-h-[320px]">
-        <VChart class="w-full h-full" :option="radarOption" autoresize />
+        <VChart
+          class="w-full h-full"
+          :option="radarOption"
+          autoresize
+          @click="onRadarClick"
+        />
       </div>
 
       <div class="lg:col-span-2 bg-ink-900/40 rounded-lg p-4 min-h-[320px] flex flex-col">
@@ -312,6 +459,10 @@ const regionTags = [
       </div>
     </div>
 
+    <div class="mb-4">
+      <AnnotationTags module="region" @edit="handleTagEdit" />
+    </div>
+
     <div class="flex flex-wrap gap-3">
       <div
         v-for="tag in regionTags"
@@ -332,6 +483,17 @@ const regionTags = [
       </div>
     </div>
   </div>
+
+  <AnnotationDialog
+    v-model:show="showDialog"
+    :entity-name="dialogPayload.entityName"
+    :metric-name="dialogPayload.metricName"
+    :time-point="dialogPayload.timePoint"
+    :value="dialogPayload.value"
+    :color="dialogPayload.color"
+    :initial-content="dialogPayload.initialContent"
+    @confirm="handleDialogConfirm"
+  />
 </template>
 
 <style scoped>
