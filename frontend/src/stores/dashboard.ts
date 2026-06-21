@@ -419,9 +419,9 @@ export const useDashboardStore = defineStore('dashboard', () => {
       )
     })
 
-    // 4. 区域消费偏好（截面数据偏离均值检测）
+    // 4. 区域消费偏好（截面数据偏离均值检测，使用雷达图实际展示的城市）
     list.push(
-      ...detectCrossSectionalAnomalies(filteredCities.value, threshold)
+      ...detectCrossSectionalAnomalies(radarCities.value, threshold)
     )
 
     anomalies.value = list
